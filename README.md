@@ -7,6 +7,7 @@
 ## ✨ Особенности / Features
 
 - ✅ **QR-код авторизация** / QR code authentication  
+- ✅ **QR для привязки устройства** (`showLinkDeviceQR`) после входа по SMS/TCP — тот же сценарий, что «Профиль → Устройства → Подключить устройство» в приложении
 - ✅ **Token авторизация** / Token authentication
 - ✅ **Два транспорта:** WebSocket (WEB) и TCP Socket (IOS/ANDROID)
 - ✅ **Автоматическое сохранение сессий** / Automatic session storage
@@ -83,8 +84,7 @@ main().catch(console.error);
 🔐 АВТОРИЗАЦИЯ ЧЕРЕЗ QR-КОД
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-📱 Откройте приложение Max на телефоне
-➡️  Настройки → Устройства → Подключить устройство
+📱 На телефоне: Профиль → Устройства / Безопасность → Подключить устройство
 📸 Отсканируйте QR-код
 
 █████████████████████████████
@@ -125,6 +125,29 @@ await client.triggerHandlers(client.handlers.START);
 node example-sms.js
 node example-sms.js +79001234567  # с номером в аргументе
 ```
+
+#### QR после входа: привязка второго устройства (IOS/ANDROID)
+
+Когда вы уже авторизованы по **TCP** (SMS и сохранённая сессия), запрос **`GET_QR` на том же соединении недоступен** (ответ сервера: недопустимое состояние сессии). Для сценария как в приложении — **показать QR, телефон сканирует** — используйте метод **`showLinkDeviceQR()`**: библиотека открывает **отдельное краткоживущее WebSocket-подключение** (как у [web.max.ru](https://web.max.ru)), запрашивает QR, печатает его в консоль и при необходимости ждёт сканирования.
+
+Требования: активное соединение и **`isAuthorized`** (обычно после `await client.start()`).
+
+```javascript
+await client.start();
+
+// Показать QR и ждать, пока отсканируют в приложении Max на телефоне
+await client.showLinkDeviceQR();
+
+// Только показать QR и вернуть данные (без ожидания скана)
+const data = await client.showLinkDeviceQR({ waitForScan: false });
+// data: { qrLink, trackId, pollingInterval, expiresAt }
+```
+
+Опции: `waitForScan` (по умолчанию `true`), `small` — компактный QR в терминале.
+
+**Версия клиента:** для выдачи QR сервер ожидает актуальный **`appVersion`** в User-Agent (не ниже **25.12.13**). В конструкторе по умолчанию используется **25.12.14**; при необходимости передайте `appVersion: '25.21.3'` или новее.
+
+Если сервер отвечает **`qr_login.disabled`**, проверьте версию приложения в опциях, откройте [web.max.ru](https://web.max.ru) в браузере или войдите на втором устройстве по номеру телефона.
 
 #### Способ 3: Token авторизация
 
@@ -172,12 +195,21 @@ const client = new WebMaxClient({
   name: 'session',        // Имя сессии (для сохранения авторизации)
   token: 'An_Sx6H...',    // Токен авторизации (опционально)
   configPath: 'myconfig', // Путь к config файлу (опционально)
-  deviceType: 'WEB',      // Тип устройства: 'WEB', 'IOS', 'ANDROID' (опционально)
+  deviceType: 'WEB',      // Тип устройства: 'WEB', 'IOS', 'ANDROID', 'DESKTOP' (опционально)
   saveToken: true,        // Сохранять токен в сессию (по умолчанию true)
   debug: false,           // Отладочный режим (опционально)
   apiUrl: 'wss://...',    // URL WebSocket API (опционально)
   maxReconnectAttempts: 5,// Максимальное количество попыток переподключения
-  reconnectDelay: 3000    // Задержка между попытками переподключения (мс)
+  reconnectDelay: 3000,   // Задержка между попытками переподключения (мс)
+  // User-Agent / клиент (важно для GET_QR, см. showLinkDeviceQR):
+  appVersion: '25.12.14', // Рекомендуется ≥ 25.12.13 для запроса QR
+  ua: 'Mozilla/5.0 ...', // или headerUserAgent
+  osVersion: 'Windows 11',
+  screen: '1920x1080 1.0x',
+  timezone: 'Europe/Moscow',
+  locale: 'ru',
+  buildNumber: 0x97cb,    // опционально
+  clientSessionId: 1      // опционально
 });
 ```
 
@@ -205,6 +237,24 @@ const authSession = await client.authorizeBySMS('+79001234567');
 // Вводим код из SMS
 await authSession.sendCode('123456');
 ```
+
+##### `showLinkDeviceQR(options)`
+
+Показать в консоли **QR-код для привязки устройства** (как в приложении Max: телефон сканирует QR). Нужна **уже выполненная авторизация** (`start()` или `connect` + `sync`).
+
+- Для **WEB** запрос выполняется по текущему WebSocket.
+- Для **IOS/ANDROID** после входа по TCP используется **второе** WebSocket-подключение без повторного `LOGIN` на той сессии (иначе `GET_QR` на том же TCP недоступен).
+
+```javascript
+await client.showLinkDeviceQR();
+await client.showLinkDeviceQR({ waitForScan: false, small: false });
+```
+
+Возвращает `Promise<{ qrLink, trackId, pollingInterval, expiresAt }>`.
+
+##### `requestQR()`, `checkQRStatus(trackId)`, `loginByQR(trackId)`, `authorizeByQR()`
+
+Низкоуровневые шаги QR-авторизации для **WEB** (первый вход без SMS). Обычно достаточно `start()` без токена или `authorizeByQR()`.
 
 ##### `sendMessage(options)`
 
@@ -532,6 +582,10 @@ node example-ios.js
 node example-ios.js --debug
 ```
 
+### Пример 5: QR для второго устройства после SMS
+
+После успешного `start()` с сохранённой сессией IOS/Android вызовите `showLinkDeviceQR()` (см. раздел **«QR после входа»** выше).
+
 ## Структура проекта
 
 ```
@@ -609,11 +663,15 @@ DEBUG=1 node example.js
 
 1. **TCP Socket после QR-авторизации:** После первой успешной QR-авторизации клиент автоматически сохраняет `clientSessionId` и переключается на TCP Socket транспорт при следующем запуске для повышения стабильности.
 
-2. **Разница между sendMessage и sendMessageChannel:**
+2. **QR для нового устройства после входа по SMS/TCP:** Используйте `showLinkDeviceQR()`. Это не отдельный опкод в протоколе, а тот же `GET_QR`, что и у веб-клиента; для уже залогиненного TCP-сокета запрос выполняется через **эфемерное WebSocket-подключение** (временный файл сессии `_link_qr_*` удаляется после завершения).
+
+3. **Версия `appVersion` и QR:** Слишком старая версия в User-Agent может привести к ответу `qr_login.disabled` на `GET_QR`. Задайте в конструкторе актуальную строку (по умолчанию **25.12.14**).
+
+4. **Разница между sendMessage и sendMessageChannel:**
    - `sendMessage()` - отправка с уведомлением (notify: true) для обычных чатов
    - `sendMessageChannel()` - отправка без уведомления (notify: false) для каналов
 
-3. **Автоматический выбор транспорта:** Клиент автоматически определяет какой транспорт использовать на основе `deviceType` в сессии или config файле.
+5. **Автоматический выбор транспорта:** Клиент автоматически определяет какой транспорт использовать на основе `deviceType` в сессии или config файле.
 
 ## 🔗 Ссылки / Links
 

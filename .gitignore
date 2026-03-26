@@ -18,6 +18,7 @@ yarn-error.log*
 .env
 .env.local
 .env.*.local
+.npmrc
 
 # OS
 .DS_Store
