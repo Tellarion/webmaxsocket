@@ -96,7 +96,37 @@ main().catch(console.error);
 - При следующем запуске клиент **автоматически переключится на TCP Socket** для стабильности
 - Повторная авторизация не требуется
 
-#### Способ 2: Token авторизация
+#### Способ 2: SMS авторизация (IOS/ANDROID)
+
+Авторизация по номеру телефона с кодом из SMS:
+
+```javascript
+const client = new WebMaxClient({
+  name: 'my_session',
+  deviceType: 'IOS'  // Обязательно для SMS авторизации
+});
+
+await client.connect();
+
+// Запрос кода
+const authSession = await client.authorizeBySMS('+79001234567');
+
+// Получаем код из SMS и отправляем
+const code = '123456';  // Код из SMS
+await authSession.sendCode(code);
+
+// Завершаем запуск
+await client.triggerHandlers(client.handlers.START);
+```
+
+Или запустите готовый пример:
+
+```bash
+node example-sms.js
+node example-sms.js +79001234567  # с номером в аргументе
+```
+
+#### Способ 3: Token авторизация
 
 Если у вас уже есть токен (от другого сервиса/приложения):
 
@@ -159,6 +189,21 @@ const client = new WebMaxClient({
 
 ```javascript
 await client.start();
+```
+
+##### `authorizeBySMS(phone)`
+
+Авторизация по номеру телефона через SMS (только для IOS/ANDROID).
+
+```javascript
+// Подключаемся
+await client.connect();
+
+// Запрашиваем код
+const authSession = await client.authorizeBySMS('+79001234567');
+
+// Вводим код из SMS
+await authSession.sendCode('123456');
 ```
 
 ##### `sendMessage(options)`
@@ -467,7 +512,17 @@ node example-token.js myconfig  # config/myconfig.json
 TOKEN="ваш_токен" node example-token.js
 ```
 
-### Пример 3: IOS/ANDROID Socket (example-ios.js)
+### Пример 3: SMS авторизация (example-sms.js)
+
+```bash
+# Интерактивный ввод номера
+node example-sms.js
+
+# С номером в аргументе
+node example-sms.js +79001234567
+```
+
+### Пример 4: IOS/ANDROID Socket (example-ios.js)
 
 ```bash
 # С готовым конфигом
@@ -499,6 +554,7 @@ webmaxsocket/
 ├── index.js                # Точка входа
 ├── example.js              # QR-авторизация
 ├── example-token.js        # Token авторизация
+├── example-sms.js          # SMS авторизация
 ├── example-ios.js          # IOS/ANDROID Socket
 ├── package.json
 └── README.md

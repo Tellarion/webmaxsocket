@@ -4,9 +4,10 @@
   "description": "Node.js client for Max Messenger with QR code and token authentication",
   "main": "index.js",
   "scripts": {
-    "start": "node example-ios.js",
+    "start": "node example.js",
     "example": "node example.js",
     "example:token": "node example-token.js",
+    "example:sms": "node example-sms.js",
     "example:ios": "node example-ios.js"
   },
   "keywords": [
@@ -55,6 +56,7 @@
     "index.js",
     "example.js",
     "example-token.js",
+    "example-sms.js",
     "example-ios.js",
     "README.md"
   ]
