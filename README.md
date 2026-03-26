@@ -13,9 +13,11 @@
 - ✅ **Автоматическое сохранение сессий** / Automatic session storage
 - ✅ **Автовыбор транспорта** после QR-авторизации (переход на TCP)
 - ✅ **Отправка и получение сообщений** / Send and receive messages
+- ✅ **Скачивание вложений по URL** (`baseUrl` из `attaches`) во временный файл — `downloadUrlToTempFile`, `message.downloadAttachment()`
 - ✅ **Редактирование и удаление сообщений** / Edit and delete messages
 - ✅ **Event-driven архитектура** / Event-driven architecture
 - ✅ **Обработка входящих уведомлений** / Handle incoming notifications
+- ✅ **Встроенный лог входящих** (`logIncoming`, `WEBMAX_DEBUG`, `WEBMAX_SILENT`) — JSON в консоль без ручных обработчиков
 - ✅ **TypeScript-ready** структура / TypeScript-ready structure
 
 ## 📦 Установка / Installation
@@ -62,8 +64,7 @@ async function main() {
     
     // Автоответ / Auto-reply
     await message.reply({
-      text: `Привет! Я получил: "${message.text}"`,
-      cid: Date.now()
+      text: `Привет! Я получил: "${message.text}"`
     });
   });
 
@@ -197,7 +198,10 @@ const client = new WebMaxClient({
   configPath: 'myconfig', // Путь к config файлу (опционально)
   deviceType: 'WEB',      // Тип устройства: 'WEB', 'IOS', 'ANDROID', 'DESKTOP' (опционально)
   saveToken: true,        // Сохранять токен в сессию (по умолчанию true)
-  debug: false,           // Отладочный режим (опционально)
+  debug: false,           // TCP/WebSocket: краткий лог opcode; также учитывается WEBMAX_DEBUG=1, DEBUG=1
+  // Лог входящих (JSON в консоль), см. ниже:
+  logIncoming: undefined, // false | 'messages' | 'verbose' — по умолчанию см. таблицу
+  logIncomingVerbose: false, // явно включить verbose (как logIncoming: 'verbose')
   apiUrl: 'wss://...',    // URL WebSocket API (опционально)
   maxReconnectAttempts: 5,// Максимальное количество попыток переподключения
   reconnectDelay: 3000,   // Задержка между попытками переподключения (мс)
@@ -212,6 +216,18 @@ const client = new WebMaxClient({
   clientSessionId: 1      // опционально
 });
 ```
+
+**Лог входящих (`logIncoming`):** печать блоков `📥 [incoming:…]` с JSON.
+
+| Значение / условие | Поведение |
+|--------------------|-----------|
+| `logIncoming: false` | Выкл. |
+| `logIncoming: 'messages'` | Только входящие сообщения (`message.rawData`). |
+| `logIncoming: 'verbose'` или `logIncomingVerbose: true` | Сообщения + `connected`, `raw_message`, `message_removed`, `chat_action`, `error`. |
+| не указано | По умолчанию: как `'messages'`; если **`WEBMAX_DEBUG=1`** — как `'verbose'`. Явное **`logIncoming: 'messages'`** отключает расширенный режим даже при `WEBMAX_DEBUG`. |
+| **`WEBMAX_SILENT=1`** | Выкл. всех дампов. |
+
+Ручной вывод в том же формате: `client.logIncoming('my_label', data)`. Текущий режим: `client.incomingLogMode` (`'off' \| 'messages' \| 'verbose'`). Низкоуровнево: `resolveIncomingLogMode(options)`, `printIncomingLog(label, payload)` из пакета.
 
 #### Методы
 
@@ -264,7 +280,7 @@ await client.showLinkDeviceQR({ waitForScan: false, small: false });
 const message = await client.sendMessage({
   chatId: 123,
   text: 'Привет!',
-  cid: Date.now(),
+  // cid опционально; на TCP не используйте Date.now() (нужен int32)
   replyTo: null,        // ID сообщения для ответа (опционально)
   attachments: []       // Вложения (опционально)
 });
@@ -278,7 +294,6 @@ const message = await client.sendMessage({
 const message = await client.sendMessageChannel({
   chatId: 123,
   text: 'Сообщение в канал',
-  cid: Date.now(),
   replyTo: null,        // ID сообщения для ответа (опционально)
   attachments: []       // Вложения (опционально)
 });
@@ -441,13 +456,11 @@ client.onError(async (error) => {
 
 ##### `reply(options)`
 
-Отвечает на сообщение.
+Отправляет текст **в тот же чат**. По умолчанию **без** цитаты исходного сообщения (`link REPLY`), т.к. на TCP-сокете сервер часто возвращает «Ошибка валидации» для ответа-цитаты. Чтобы попробовать ответ с цитатой: `{ text: '...', quote: true }`.
 
 ```javascript
-await message.reply({
-  text: 'Ответ на сообщение',
-  cid: Date.now()
-});
+await message.reply({ text: 'Ответ на сообщение' });
+await message.reply({ text: '...', quote: true });
 ```
 
 ##### `edit(options)`
@@ -475,6 +488,59 @@ await message.delete();
 ```javascript
 await message.forward(789);
 ```
+
+##### `downloadAttachment(index, options?)`
+
+Скачивает вложение по полю **`baseUrl`** (или `url`) из `message.attachments[index]` в **временный файл**. По умолчанию каталог — `os.tmpdir()` (на Windows обычно `%TEMP%`). Имя файла генерируется автоматически; расширение берётся из заголовка `Content-Type`, при необходимости — из типа вложения (`_type`, например `PHOTO`).
+
+Возвращает `{ path, contentType }`.
+
+```javascript
+if (message.attachments.length) {
+  const { path, contentType } = await message.downloadAttachment(0);
+  console.log('Сохранено:', path, contentType);
+  // после обработки можно удалить: fs.unlinkSync(path)
+}
+
+// Свой каталог или имя файла:
+await message.downloadAttachment(0, {
+  dir: './downloads',
+  filename: 'photo.webp'
+});
+```
+
+### Утилиты скачивания медиа / Media download helpers
+
+Экспортируются из пакета наряду с `WebMaxClient`:
+
+```javascript
+const {
+  downloadUrlToTempFile,
+  extFromContentType,
+  extFromAttachType
+} = require('webmaxsocket');
+```
+
+##### `downloadUrlToTempFile(url, options?)`
+
+HTTP(S)-запрос с следованием редиректам, запись тела ответа в файл.
+
+| Опция | Описание |
+|--------|----------|
+| `dir` | Каталог (по умолчанию `os.tmpdir()`) |
+| `filename` | Имя файла (только basename); если не задано — `max-media-<time>-<random>.<ext>` |
+| `extFallback` | Расширение, если по `Content-Type` определить не удалось (например `'.jpg'`) |
+
+```javascript
+const { path, contentType } = await downloadUrlToTempFile(
+  'https://i.oneme.ru/i?r=...',
+  { extFallback: '.jpg' }
+);
+```
+
+##### `extFromContentType(contentType)` / `extFromAttachType(attachType)`
+
+Вспомогательные функции для подбора расширения по MIME или по `_type` вложения (`PHOTO`, `VIDEO`, …).
 
 ### User
 
@@ -597,6 +663,8 @@ webmaxsocket/
 │   ├── userAgent.js        # UserAgent генератор
 │   ├── opcodes.js          # Протокол опкоды
 │   ├── constants.js        # Константы
+│   ├── downloadMedia.js    # Скачивание медиа по URL во временный файл
+│   ├── incomingLog.js      # Режим logIncoming / печать входящих
 │   └── entities/
 │       ├── User.js         # Класс пользователя
 │       ├── Message.js      # Класс сообщения
@@ -634,8 +702,7 @@ const client2 = new WebMaxClient({ name: 'account1' }); // phone не требу
 try {
   const message = await client.sendMessage({
     chatId: 123,
-    text: 'Привет!',
-    cid: Date.now()
+    text: 'Привет!'
   });
 } catch (error) {
   console.error('Ошибка:', error.message);
@@ -672,6 +739,8 @@ DEBUG=1 node example.js
    - `sendMessageChannel()` - отправка без уведомления (notify: false) для каналов
 
 5. **Автоматический выбор транспорта:** Клиент автоматически определяет какой транспорт использовать на основе `deviceType` в сессии или config файле.
+
+6. **`cid` при отправке сообщений (TCP/Socket):** сервер проверяет **signed int32**. Не передавайте `Date.now()` (миллисекунды ~1e12) — будет «Ошибка валидации». Либо не указывайте `cid` (клиент подставит свой), либо передайте целое в диапазоне **−2³¹ … 2³¹−1**.
 
 ## 🔗 Ссылки / Links
 

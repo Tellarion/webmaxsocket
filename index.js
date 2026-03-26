@@ -11,6 +11,8 @@ const { User, Message, ChatAction } = require('./lib/entities');
 const { ChatActions, EventTypes, MessageTypes } = require('./lib/constants');
 const { Opcode, getOpcodeName } = require('./lib/opcodes');
 const { UserAgentPayload } = require('./lib/userAgent');
+const { downloadUrlToTempFile, extFromContentType, extFromAttachType } = require('./lib/downloadMedia');
+const { resolveIncomingLogMode, printIncomingLog } = require('./lib/incomingLog');
 
 module.exports = {
   WebMaxClient,
@@ -23,6 +25,11 @@ module.exports = {
   MessageTypes,
   Opcode,
   getOpcodeName,
-  UserAgentPayload
+  UserAgentPayload,
+  downloadUrlToTempFile,
+  extFromContentType,
+  extFromAttachType,
+  resolveIncomingLogMode,
+  printIncomingLog
 };
 
