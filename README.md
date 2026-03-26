@@ -4,6 +4,8 @@
 
 **WebMaxSocket** — async Node.js библиотека для работы с внутренним API мессенджера Max. Поддерживает **QR-код авторизацию**, **Token авторизацию**, и работу через **WebSocket** (WEB) или **TCP Socket** (IOS/ANDROID).
 
+Сводка всех методов: **[api.package.md](./api.package.md)**.
+
 ## ✨ Особенности / Features
 
 - ✅ **QR-код авторизация** / QR code authentication  
@@ -13,7 +15,10 @@
 - ✅ **Автоматическое сохранение сессий** / Automatic session storage
 - ✅ **Автовыбор транспорта** после QR-авторизации (переход на TCP)
 - ✅ **Отправка и получение сообщений** / Send and receive messages
+- ✅ **Загрузка медиа с диска:** `uploadPhoto`, `uploadVideo`, `uploadFile`, `uploadAudio` → `attachments` в `sendMessage` / `sendMessageChannel` / `reply`
 - ✅ **Скачивание вложений по URL** (`baseUrl` из `attaches`) во временный файл — `downloadUrlToTempFile`, `message.downloadAttachment()`
+- ✅ **Группы и каналы:** создание, инвайты, админы, участники, ссылки, mute, подписка — см. раздел API
+- ✅ **Реакции, пины, настройки профиля и приватности, контакты / блокировка**
 - ✅ **Редактирование и удаление сообщений** / Edit and delete messages
 - ✅ **Event-driven архитектура** / Event-driven architecture
 - ✅ **Обработка входящих уведомлений** / Handle incoming notifications
@@ -288,14 +293,14 @@ const message = await client.sendMessage({
 
 ##### `sendMessageChannel(options)`
 
-Отправляет сообщение в канал без уведомления (notify: false).
+Отправляет сообщение в канал без уведомления (notify: false). Поля **`text`**, **`replyTo`**, **`attachments`** — те же, что у `sendMessage` (вложения из `uploadPhoto` / `uploadVideo` / `uploadFile` / `uploadAudio`).
 
 ```javascript
 const message = await client.sendMessageChannel({
   chatId: 123,
   text: 'Сообщение в канал',
-  replyTo: null,        // ID сообщения для ответа (опционально)
-  attachments: []       // Вложения (опционально)
+  replyTo: null,
+  attachments: [] // опционально: [attach] после upload*
 });
 ```
 
@@ -307,9 +312,56 @@ const message = await client.sendMessageChannel({
 await client.editMessage({
   messageId: 456,
   chatId: 123,
-  text: 'Исправленный текст'
+  text: 'Исправленный текст',
+  attachments: [] // опционально, после upload*
 });
 ```
+
+##### Пины, реакции
+
+| Метод | Назначение |
+|--------|------------|
+| `pinMessage({ chatId, messageId, notifyPin })` | Закрепить сообщение |
+| `setMessageReaction({ chatId, messageId, emoji })` | Эмодзи-реакция |
+| `cancelMessageReaction({ chatId, messageId })` | Снять реакцию |
+| `getMessageReactions({ chatId, messageId, count })` | Список реакций |
+
+##### Чаты, каналы, группы
+
+| Метод | Назначение |
+|--------|------------|
+| `getChatInfo(chatIds)` | Информация по id (массив или одно число) |
+| `resolveLink(link)` | Разрешить URL / `join/…` (LINK_INFO) |
+| `joinChatByLink(link)` | Вступить по ссылке |
+| `setChatSubscription(chatId, subscribe)` | Подписка на канал |
+| `createGroup({ title, userIds })` | Новая группа |
+| `createChannel({ title })` | Новый канал |
+| `muteChat(chatId, mute)` | Уведомления чата (не беспокоить) |
+| `getChatMembers({ chatId, marker, count, type })` | Участники (count ≤ 500) |
+| `inviteToChat({ chatId, userIds, showHistory })` | Пригласить |
+| `removeFromChat({ chatId, userIds, cleanMsgPeriod })` | Исключить |
+| `addChatAdmins({ chatId, userIds, permissions })` | Выдать админку (по умолчанию `permissions: 120`) |
+| `removeChatAdmins({ chatId, userIds })` | Снять админку |
+| `transferChatOwnership({ chatId, newOwnerId })` | Передать владение |
+| `setGroupOptions({ chatId, options })` | Настройки группы (`ALL_CAN_PIN_MESSAGE`, …) |
+| `resolveChannelByUsername(username)` | Канал по @username |
+| `joinChannelByUsername(username)` | Вступить по @username |
+| `resolveInviteHash(hash)` | Инвайт по хэшу без префикса `join/` |
+
+##### Контакты и профиль
+
+| Метод | Назначение |
+|--------|------------|
+| `getContacts(contactIds)` | Несколько контактов (массив id) |
+| `addContact(userId)` | В контакты |
+| `blockUser(userId)` | Заблокировать |
+| `updateProfile({ firstName, lastName, description })` | Своё имя / описание |
+| `setHiddenOnline(hidden)` | Скрыть «в сети» |
+| `setFindableByPhone(mode)` | `'ALL'` \| `'CONTACTS'` или boolean |
+| `setCallsPrivacyMode(mode)` | Кто может звонить |
+| `setChatsInvitePrivacy(mode)` | Кто может приглашать в чаты |
+
+Часть методов требует прав в чате; ответы сервера зависят от роли и типа чата.
 
 ##### `deleteMessage(options)`
 
@@ -331,6 +383,36 @@ await client.forwardMessage({
   messageId: 456,
   fromChatId: 123,
   toChatId: 789
+});
+```
+
+##### Загрузка медиа для `attachments`
+
+Все методы ниже возвращают объект(ы), которые передаются в **`attachments`** у `sendMessage`, **`sendMessageChannel`** и **`message.reply`**. Нужен **Node.js 18+** (`fetch`, `FormData`). Схема: опкод загрузки → `UPLOAD_ATTACH_PREP` (65) → HTTP POST на выданный URL. Для **видео** и **файлов** после POST клиент ждёт **`NOTIF_ATTACH` (opcode 136)**.
+
+| Метод | Результат для `attachments` |
+|--------|-----------------------------|
+| `uploadPhoto(chatId, filePath)` | `{ _type: 'PHOTO', photoToken }` |
+| `uploadVideo(chatId, filePath)` | `{ _type: 'VIDEO', videoId, token }` |
+| `uploadFile(chatId, filePath, options?)` | `{ _type: 'FILE', fileId }` — документы, архивы; `options`: `{ filename, mimeType }` |
+| `uploadAudio(chatId, filePath)` | то же, что `uploadFile` с MIME для `.mp3`, `.ogg`, `.m4a`, `.wav`, … |
+
+```javascript
+const photo = await client.uploadPhoto(chatId, './a.png');
+const video = await client.uploadVideo(chatId, './b.mp4');
+const file = await client.uploadFile(chatId, './doc.pdf');
+const audio = await client.uploadAudio(chatId, './track.mp3');
+
+await client.sendMessage({
+  chatId,
+  text: 'Набор вложений',
+  attachments: [photo, video]
+});
+
+await client.sendMessageChannel({
+  chatId,
+  text: 'В канал с файлом',
+  attachments: [file]
 });
 ```
 
@@ -679,6 +761,7 @@ webmaxsocket/
 ├── example-sms.js          # SMS авторизация
 ├── example-ios.js          # IOS/ANDROID Socket
 ├── package.json
+├── api.package.md          # Справочник API (все методы)
 └── README.md
 ```
 
