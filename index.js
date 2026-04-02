@@ -13,6 +13,7 @@ const { Opcode, getOpcodeName } = require('./lib/opcodes');
 const { UserAgentPayload } = require('./lib/userAgent');
 const { downloadUrlToTempFile, extFromContentType, extFromAttachType } = require('./lib/downloadMedia');
 const { resolveIncomingLogMode, printIncomingLog } = require('./lib/incomingLog');
+const { parseQrTrackId } = require('./lib/qrWebLogin');
 
 module.exports = {
   WebMaxClient,
@@ -30,6 +31,7 @@ module.exports = {
   extFromContentType,
   extFromAttachType,
   resolveIncomingLogMode,
-  printIncomingLog
+  printIncomingLog,
+  parseQrTrackId
 };
 
