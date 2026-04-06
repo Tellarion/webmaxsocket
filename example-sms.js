@@ -102,8 +102,20 @@ async function main() {
         process.exit(1);
       }
 
-      // Отправляем код и завершаем авторизацию
-      await authSession.sendCode(code);
+      // Отправляем код; при 2FA по паролю вернётся { needsPassword, sendPassword }
+      const afterCode = await authSession.sendCode(code);
+      if (afterCode && typeof afterCode === 'object' && afterCode.needsPassword && typeof afterCode.sendPassword === 'function') {
+        let pwd = process.env.TWOFA_PASSWORD || process.env.TWOFa_PASSWORD;
+        const saved = client.session.get('twofaPassword');
+        if (!pwd && saved && process.env.ASK_TWOFA !== '1' && process.env.ASK_TWOFa !== '1') {
+          pwd = saved;
+          console.log('\n🔒 Пароль 2FA из сессии (twofaPassword).');
+        }
+        if (!pwd) {
+          pwd = await ask('\n🔒 Введите пароль 2FA: ');
+        }
+        await afterCode.sendPassword(pwd);
+      }
     }
 
     // Запускаем обработчики start

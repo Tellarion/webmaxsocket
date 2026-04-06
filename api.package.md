@@ -55,7 +55,8 @@
 |-------|----------|
 | `authorize(phone?)` | Сценарий авторизации по умолчанию |
 | `authorizeByQR()` | QR (WEB) |
-| `authorizeBySMS(phone)` | SMS; возвращает `{ sendCode }` |
+| `authorizeBySMS(phone)` | SMS; возвращает `{ tempToken, phone, sendCode }`. `sendCode(code)` — либо токен (строка), либо при 2FA объект `{ needsPassword, passwordChallenge, trackId, sendPassword }` |
+| *(опции)* | `saveTwofaPassword` (по умолчанию `true`) — писать пароль 2FA в сессию после успешного `sendPassword` |
 | `requestQR()` | Запрос QR |
 | `checkQRStatus(trackId)` | Статус QR |
 | `loginByQR(trackId)` | Завершение по QR |
@@ -139,6 +140,17 @@
 | `logIncoming(label, payload)` | Ручной лог `[incoming:…]` |
 | `sendAndWait(opcode, payload, cmd?, timeout?)` | Низкоуровневый RPC |
 | `triggerHandlers(eventType, data?)` | Внутренний вызов обработчиков (редко нужен снаружи) |
+
+---
+
+## `MaxSocketTransport` (TCP)
+
+| Метод | Описание |
+|-------|----------|
+| `requestCode(phone, language?)` | Запрос SMS (`AUTH_REQUEST`) |
+| `sendCode(tempToken, code)` | Код из SMS (`AUTH` + `CHECK_CODE`) |
+| `sendLogin2FAPassword(trackId, password)` | Пароль 2FA после `passwordChallenge` (`AUTH_LOGIN_CHECK_PASSWORD`, opcode `0x73`) |
+| `handshake(userAgent)`, `sendAndWait`, `sync`, `getChats`, `getHistory`, `close` | См. `lib/socketTransport.js` |
 
 ---
 

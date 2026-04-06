@@ -2,7 +2,9 @@
 
 ## 📖 Описание / Description
 
-**WebMaxSocket** — async Node.js библиотека для работы с внутренним API мессенджера Max. Поддерживает **QR-код авторизацию**, **Token авторизацию**, и работу через **WebSocket** (WEB) или **TCP Socket** (IOS/ANDROID).
+**WebMaxSocket** — async Node.js библиотека для работы с внутренним API мессенджера Max. Поддерживает **QR-код авторизацию**, **Token авторизацию**, **SMS-вход** с опциональным **2FA-паролем** (как в приложении Max), и работу через **WebSocket** (WEB) или **TCP Socket** (IOS/ANDROID).
+
+**Текущая версия пакета: 1.2.0**
 
 Сводка всех методов: **[api.package.md](./api.package.md)**.
 
@@ -11,6 +13,7 @@
 - ✅ **QR-код авторизация** / QR code authentication  
 - ✅ **QR для привязки устройства** (`showLinkDeviceQR`) после входа по SMS/TCP — тот же сценарий, что «Профиль → Устройства → Подключить устройство» в приложении
 - ✅ **Token авторизация** / Token authentication
+- ✅ **SMS + 2FA по паролю** (IOS/ANDROID): после кода из SMS при необходимости второй шаг `AUTH_LOGIN_CHECK_PASSWORD` (opcode `0x73`); сохранение пароля в сессии опционально (`saveTwofaPassword`)
 - ✅ **Два транспорта:** WebSocket (WEB) и TCP Socket (IOS/ANDROID)
 - ✅ **Автоматическое сохранение сессий** / Automatic session storage
 - ✅ **Автовыбор транспорта** после QR-авторизации (переход на TCP)
@@ -110,26 +113,34 @@ main().catch(console.error);
 
 #### Способ 2: SMS авторизация (IOS/ANDROID)
 
-Авторизация по номеру телефона с кодом из SMS:
+Авторизация по номеру телефона с кодом из SMS. Если на аккаунте включена **двухфакторная защита паролем**, после верного SMS-кода сервер возвращает **`passwordChallenge`**; тогда нужен второй шаг — **`sendPassword`** (протокол `AUTH_LOGIN_CHECK_PASSWORD`, как в официальном клиенте).
 
 ```javascript
 const client = new WebMaxClient({
   name: 'my_session',
-  deviceType: 'IOS'  // Обязательно для SMS авторизации
+  deviceType: 'IOS', // Обязательно для SMS
+  // saveTwofaPassword: true  // по умолчанию: сохранить пароль 2FA в sessions/*.json
 });
 
 await client.connect();
 
-// Запрос кода
 const authSession = await client.authorizeBySMS('+79001234567');
+const code = '123456'; // код из SMS
 
-// Получаем код из SMS и отправляем
-const code = '123456';  // Код из SMS
-await authSession.sendCode(code);
+const result = await authSession.sendCode(code);
 
-// Завершаем запуск
+if (result && typeof result === 'object' && result.needsPassword) {
+  // Подсказка/почта могут быть в result.passwordChallenge
+  await result.sendPassword('ваш_пароль_2FA');
+  // после успеха в сессии появится token; при saveTwofaPassword !== false — поле twofaPassword
+} else {
+  // Обычный вход без пароля: result — строка-токен (уже выполнен sync внутри sendCode)
+}
+
 await client.triggerHandlers(client.handlers.START);
 ```
+
+**Сессия:** для повторных запусков достаточно **токена** в `sessions/<имя>.json` — SMS и пароль 2FA не нужны, пока токен действителен. Поле **`twofaPassword`** (если включено сохранение) используется при **полном** повторном входе (истёк токен): можно подставить пароль без ручного ввода (в примерах учитываются переменные **`TWOFA_PASSWORD`**, **`ASK_TWOFA=1`** для принудительного запроса в консоль).
 
 Или запустите готовый пример:
 
@@ -252,17 +263,22 @@ await client.start();
 
 ##### `authorizeBySMS(phone)`
 
-Авторизация по номеру телефона через SMS (только для IOS/ANDROID).
+Авторизация по номеру телефона через SMS (только для IOS/ANDROID). Возвращает объект с полями **`tempToken`**, **`phone`**, **`sendCode`**.
+
+**`sendCode(code)`** после ввода кода из SMS:
+
+- если пароль 2FA **не** требуется — возвращает **строку-токен** (внутри уже выполнены сохранение сессии и **`sync()`**);
+- если требуется 2FA — возвращает объект **`{ needsPassword: true, passwordChallenge, trackId, sendPassword }`**. Вызовите **`await sendPassword(password)`**; при успехе выполняется **`sync()`**, при **`saveTwofaPassword !== false`** (по умолчанию `true`) в файл сессии записывается **`twofaPassword`** для следующих полных входов.
+
+Опция конструктора **`saveTwofaPassword: false`** отключает запись пароля 2FA в `sessions/*.json`.
+
+Низкоуровнево на TCP: **`sendCode`** → `AUTH` (18) с `authTokenType: 'CHECK_CODE'`; **`sendPassword`** → **`AUTH_LOGIN_CHECK_PASSWORD`** (`0x73`) с полями **`trackId`** и **`password`** (см. `MaxSocketTransport.sendLogin2FAPassword`).
 
 ```javascript
-// Подключаемся
 await client.connect();
-
-// Запрашиваем код
 const authSession = await client.authorizeBySMS('+79001234567');
-
-// Вводим код из SMS
-await authSession.sendCode('123456');
+const out = await authSession.sendCode('123456');
+if (out && out.needsPassword) await out.sendPassword('…');
 ```
 
 ##### `showLinkDeviceQR(options)`
@@ -834,6 +850,18 @@ DEBUG=1 node example.js
 7. **TCP и keep-alive (PING):** сервер периодически шлёт `PING`. На WebSocket клиент отвечает `sendPong`; на **TCP** раньше ответ не отправлялся — соединение могло обрываться через несколько минут, после чего процесс Node **завершался** (нечем держать event loop). Сейчас на TCP автоматически шлётся тот же ответ, что и у WebSocket (`PING` с пустым payload).
 
 8. **LZ4:** для IOS/ANDROID входящие данные распаковываются из LZ4-блоков; **`lz4js`** входит в зависимости пакета. При необходимости можно установить нативный **`lz4`** (см. раздел **«Зависимости для Socket транспорта»**).
+
+## 📌 История версий / Changelog
+
+### 1.2.0
+
+- SMS-авторизация: поддержка **2FA по паролю** после кода из SMS (`passwordChallenge`, `AUTH_LOGIN_CHECK_PASSWORD` / opcode `0x73`).
+- Опция **`saveTwofaPassword`** (по умолчанию включена): сохранение пароля 2FA в файл сессии **`twofaPassword`**.
+- **`MaxSocketTransport`**: метод **`sendLogin2FAPassword(trackId, password)`**.
+
+### 1.1.6 и ранее
+
+- См. коммиты и теги в [репозитории](https://github.com/Tellarion/webmaxsocket).
 
 ## 🔗 Ссылки / Links
 
