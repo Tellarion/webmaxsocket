@@ -1,13 +1,14 @@
 {
   "name": "webmaxsocket",
-  "version": "1.2.0",
-  "description": "Node.js client for Max Messenger: QR, token, SMS auth and optional 2FA password (TCP)",
+  "version": "1.2.1",
+  "description": "Node.js client for Max Messenger: QR, token, SMS auth, 2FA, device sessions (TCP)",
   "main": "index.js",
   "scripts": {
     "start": "node example.js",
     "example": "node example.js",
     "example:token": "node example-token.js",
     "example:sms": "node example-sms.js",
+    "example:sessions-2fa": "node example-sessions-2fa.js",
     "example:ios": "node example-ios.js"
   },
   "keywords": [
@@ -57,6 +58,7 @@
     "example.js",
     "example-token.js",
     "example-sms.js",
+    "example-sessions-2fa.js",
     "example-ios.js",
     "README.md",
     "api.package.md"

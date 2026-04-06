@@ -4,7 +4,7 @@
 
 **WebMaxSocket** — async Node.js библиотека для работы с внутренним API мессенджера Max. Поддерживает **QR-код авторизацию**, **Token авторизацию**, **SMS-вход** с опциональным **2FA-паролем** (как в приложении Max), и работу через **WebSocket** (WEB) или **TCP Socket** (IOS/ANDROID).
 
-**Текущая версия пакета: 1.2.0**
+**Текущая версия пакета: 1.2.1**
 
 Сводка всех методов: **[api.package.md](./api.package.md)**.
 
@@ -22,6 +22,8 @@
 - ✅ **Скачивание вложений по URL** (`baseUrl` из `attaches`) во временный файл — `downloadUrlToTempFile`, `message.downloadAttachment()`
 - ✅ **Группы и каналы:** создание, инвайты, админы, участники, ссылки, mute, подписка — см. раздел API
 - ✅ **Реакции, пины, настройки профиля и приватности, контакты / блокировка**
+- ✅ **Список устройств (сессий)** и **завершение других сеансов** (`getSessionsInfo`, `closeAllSessionsExceptCurrent`) — как «Профиль → Устройства» в Max
+- ✅ **Сведения о 2FA и установка пароля по trackId** (`getTwoFADetails`, `setTwoFAPassword`)
 - ✅ **Редактирование и удаление сообщений** / Edit and delete messages
 - ✅ **Event-driven архитектура** / Event-driven architecture
 - ✅ **Обработка входящих уведомлений** / Handle incoming notifications
@@ -171,6 +173,34 @@ const data = await client.showLinkDeviceQR({ waitForScan: false });
 **Версия клиента:** для выдачи QR сервер ожидает актуальный **`appVersion`** в User-Agent (не ниже **25.12.13**). В конструкторе по умолчанию используется **25.12.14**; при необходимости передайте `appVersion: '25.21.3'` или новее.
 
 Если сервер отвечает **`qr_login.disabled`**, проверьте версию приложения в опциях, откройте [web.max.ru](https://web.max.ru) в браузере или войдите на втором устройстве по номеру телефона.
+
+#### Устройства (сессии) и 2FA в аккаунте
+
+После **`start()`** (или `connect` + `sync`) доступны:
+
+- **`getSessionsInfo()`** — payload со списком сессий (часто поле **`sessions`**). Удобный разбор: **`WebMaxClient.normalizeSessionsList(payload)`** → массив `{ time, client, info, location, current, raw }`.
+- **`closeAllSessionsExceptCurrent()`** — завершить все сессии, кроме текущей (аналог «Завершить другие сеансы»). Сначала пробуются тела с флагами `allExceptCurrent` и т.п., затем — список **`times`** не-текущих сессий из списка устройств.
+- **`closeSessions(payload)`** — низкоуровневый вызов `SESSIONS_CLOSE` с произвольным телом.
+- **`getTwoFADetails()`** — состояние и параметры 2FA.
+- **`setTwoFAPassword({ trackId, password, hint?, email? })`** — включение или смена пароля по **`trackId`** из сценария приложения; до получения **`trackId`** может понадобиться навигация в официальном клиенте.
+
+Пример:
+
+```javascript
+await client.start();
+
+const info = await client.getSessionsInfo();
+const devices = WebMaxClient.normalizeSessionsList(info);
+console.log(devices);
+
+// по желанию — завершить все, кроме этой сессии
+// await client.closeAllSessionsExceptCurrent();
+
+const twoFA = await client.getTwoFADetails();
+// await client.setTwoFAPassword({ trackId: '...', password: '...', hint: '...' });
+```
+
+Готовый скрипт: **`node example-sessions-2fa.js`** (с флагом **`--close-others`** — с подтверждением завершит другие сеансы).
 
 #### Способ 3: Token авторизация
 
@@ -852,6 +882,11 @@ DEBUG=1 node example.js
 8. **LZ4:** для IOS/ANDROID входящие данные распаковываются из LZ4-блоков; **`lz4js`** входит в зависимости пакета. При необходимости можно установить нативный **`lz4`** (см. раздел **«Зависимости для Socket транспорта»**).
 
 ## 📌 История версий / Changelog
+
+### 1.2.1
+
+- Список устройств и завершение других сеансов: **`getSessionsInfo`**, **`normalizeSessionsList`**, **`closeSessions`**, **`closeAllSessionsExceptCurrent`**.
+- 2FA в аккаунте: **`getTwoFADetails`**, **`setTwoFAPassword`**. Пример: **`example-sessions-2fa.js`**.
 
 ### 1.2.0
 

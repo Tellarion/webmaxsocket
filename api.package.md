@@ -123,6 +123,17 @@
 | `setCallsPrivacyMode(mode)` | Звонки |
 | `setChatsInvitePrivacy(mode)` | Приглашения в чаты |
 
+### Сессии (устройства) и 2FA
+
+| Метод | Описание |
+|-------|----------|
+| `getSessionsInfo()` | Список сессий; возвращает **payload** |
+| `WebMaxClient.normalizeSessionsList(payload)` | Массив `{ time, client, info, location, current, raw }` |
+| `closeSessions(payload)` | Закрыть сессии по телу запроса |
+| `closeAllSessionsExceptCurrent()` | Завершить все, кроме текущей; возвращает **payload** |
+| `getTwoFADetails()` | Параметры 2FA |
+| `setTwoFAPassword({ trackId, password, hint?, email? })` | Установка или смена пароля 2FA |
+
 ### Обработчики событий
 
 | Метод | Событие |
@@ -149,7 +160,7 @@
 |-------|----------|
 | `requestCode(phone, language?)` | Запрос SMS (`AUTH_REQUEST`) |
 | `sendCode(tempToken, code)` | Код из SMS (`AUTH` + `CHECK_CODE`) |
-| `sendLogin2FAPassword(trackId, password)` | Пароль 2FA после `passwordChallenge` (`AUTH_LOGIN_CHECK_PASSWORD`, opcode `0x73`) |
+| `sendLogin2FAPassword(trackId, password)` | Пароль 2FA после `passwordChallenge` |
 | `handshake(userAgent)`, `sendAndWait`, `sync`, `getChats`, `getHistory`, `close` | См. `lib/socketTransport.js` |
 
 ---
