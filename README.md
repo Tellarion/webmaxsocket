@@ -4,7 +4,7 @@
 
 **WebMaxSocket** — async Node.js библиотека для работы с внутренним API мессенджера Max. Поддерживает **QR-код авторизацию**, **Token авторизацию**, **SMS-вход** с опциональным **2FA-паролем** (как в приложении Max), и работу через **WebSocket** (WEB) или **TCP Socket** (IOS/ANDROID).
 
-**Текущая версия пакета: 1.2.1**
+**Текущая версия пакета: 1.2.2**
 
 Сводка всех методов: **[api.package.md](./api.package.md)**.
 
@@ -16,6 +16,8 @@
 - ✅ **SMS + 2FA по паролю** (IOS/ANDROID): после кода из SMS при необходимости второй шаг `AUTH_LOGIN_CHECK_PASSWORD` (opcode `0x73`); сохранение пароля в сессии опционально (`saveTwofaPassword`)
 - ✅ **Два транспорта:** WebSocket (WEB) и TCP Socket (IOS/ANDROID)
 - ✅ **Автоматическое сохранение сессий** / Automatic session storage
+- ✅ **Ротация токена после `sync()`:** если сервер возвращает новый `token` в ответе `LOGIN`, он сохраняется в `sessions/*.json` (как при SMS/QR)
+- ✅ **Периодический `sync()`** (`sessionRefreshIntervalMs` / `autoSyncIntervalMs`) для продления сессии без перезапуска процесса
 - ✅ **Автовыбор транспорта** после QR-авторизации (переход на TCP)
 - ✅ **Отправка и получение сообщений** / Send and receive messages
 - ✅ **Загрузка медиа с диска:** `uploadPhoto`, `uploadVideo`, `uploadFile`, `uploadAudio` → `attachments` в `sendMessage` / `sendMessageChannel` / `reply`
@@ -257,6 +259,9 @@ const client = new WebMaxClient({
   apiUrl: 'wss://...',    // URL WebSocket API (опционально)
   maxReconnectAttempts: 5,// Максимальное количество попыток переподключения
   reconnectDelay: 3000,   // Задержка между попытками переподключения (мс)
+  // Сессия и токен (см. раздел «Сессии»):
+  sessionRefreshIntervalMs: 0, // Периодический sync (мс), минимум 10_000; 0 — выключено. Алиас: autoSyncIntervalMs
+  clearSessionOnFailedSync: false, // connectWithSession: при ошибке sync вызвать session.clear() перед authorize() (по умолчанию false)
   // User-Agent / клиент (важно для GET_QR, см. showLinkDeviceQR):
   appVersion: '25.12.14', // Рекомендуется ≥ 25.12.13 для запроса QR
   ua: 'Mozilla/5.0 ...', // или headerUserAgent
@@ -821,12 +826,24 @@ webmaxsocket/
 
 Библиотека автоматически сохраняет сессии в директории `sessions/`. При повторном запуске с тем же именем сессии авторизация не требуется.
 
+**Токен после `sync()`:** при успешном `LOGIN` (вызов `sync()`) сервер может вернуть новый токен в `tokenAttrs.LOGIN.token`. Если он отличается от сохранённого, библиотека обновляет `this._token` и файл сессии (если `saveToken !== false`). Так ротация на стороне Max не теряется между перезапусками.
+
+**Периодическое обновление:** опция **`sessionRefreshIntervalMs`** (или **`autoSyncIntervalMs`**) — интервал в миллисекундах для повторного `sync()` в работающем клиенте (после успешного `start()` или `connectWithSession()`). Минимум **10 с**; меньшие значения поднимаются до 10 с с предупреждением. Таймер снимается в **`stop()`**. Ручная очистка файла сессии: **`client.session.clear()`**.
+
+**Повторный вход при ошибке токена из config:** при неудачном `sync()` с токеном из **`options.token`** или **`config`** файл `sessions/*.json` **не очищается** (чтобы сохранить актуальный токен из прошлой авторизации). Для **`connectWithSession()`** очистка перед `authorize()` после ошибки `sync()` выключена по умолчанию; включите **`clearSessionOnFailedSync: true`**, если нужно прежнее поведение «чистый лист».
+
 ```javascript
 // Создание новой сессии
 const client1 = new WebMaxClient({ name: 'account1', phone: '+1234567890' });
 
 // Использование существующей сессии
 const client2 = new WebMaxClient({ name: 'account1' }); // phone не требуется
+
+// Пример: раз в 45 минут — sync() для продления ротации токена
+const client3 = new WebMaxClient({
+  name: 'account1',
+  sessionRefreshIntervalMs: 45 * 60 * 1000
+});
 ```
 
 ## Обработка ошибок
@@ -882,6 +899,13 @@ DEBUG=1 node example.js
 8. **LZ4:** для IOS/ANDROID входящие данные распаковываются из LZ4-блоков; **`lz4js`** входит в зависимости пакета. При необходимости можно установить нативный **`lz4`** (см. раздел **«Зависимости для Socket транспорта»**).
 
 ## 📌 История версий / Changelog
+
+### 1.3.0
+
+- **`sync()` / LOGIN:** сохранение нового токена из ответа `tokenAttrs.LOGIN.token` при ротации на сервере.
+- **`sessionRefreshIntervalMs`** / **`autoSyncIntervalMs`:** периодический `sync()` в фоне (минимум 10 с), таймер в `stop()`.
+- **`start()`:** при ошибке `sync()` с токеном из config/options вызов **`session.clear()`** убран — файл сессии не теряется.
+- **`clearSessionOnFailedSync`** (по умолчанию `false`): для **`connectWithSession()`** — опционально вызывать **`session.clear()`** перед повторной авторизацией после ошибки `sync()`.
 
 ### 1.2.1
 
