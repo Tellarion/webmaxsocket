@@ -2,6 +2,8 @@
 
 Краткий перечень возможностей для работы с библиотекой. Подробности и примеры — в `README.md`.
 
+**Версия пакета (справочник синхронизирован с):** 1.2.2+
+
 **Зависимости TCP (IOS/ANDROID):** ответы по сокету сжаты **LZ4**; для распаковки используется **`lz4js`**. См. `README.md` → «Зависимости для Socket транспорта».
 
 ---
@@ -30,23 +32,42 @@
 | Свойство | Описание |
 |----------|----------|
 | `me` | Профиль после авторизации |
-| `session` | Менеджер сессий |
+| `session` | Менеджер сессий: `get` / `set` / `clear` / `destroy` / `copyToLastOk`, поле `sessionFile` и др. |
 | `isConnected`, `isAuthorized` | Состояние |
 | `userAgent` | Текущий User-Agent |
 | `deviceId` | ID устройства |
 | `incomingLogMode` | `'off'` \| `'messages'` \| `'verbose'` |
 
+### Опции конструктора (выборочно)
+
+| Опция | Описание |
+|-------|----------|
+| `name` / `session` | Имя файла сессии в `sessions/` |
+| `token` | Явный токен (приоритет над файлом сессии; см. `README` → приоритет токена) |
+| `configPath` / `config` | Путь к JSON-конфигу с `token`, `agent`, `device_type` и т.д. |
+| `deviceType`, `deviceId`, `ua`, `appVersion`, … | User-Agent и устройство — см. `README` |
+| `saveToken` | По умолчанию `true` — писать токен в сессию после входа |
+| `saveTwofaPassword` | По умолчанию `true` — писать пароль 2FA в сессию после `sendPassword` |
+| `sessionBackup` | По умолчанию `true` — после успешного `sync` копия в `*.last_ok.json` |
+| `sessionRefreshIntervalMs` | Интервал (мс) периодического `sync()` в работающем клиенте; `0` — выкл. Минимум **10000** мс. Алиас: `autoSyncIntervalMs` |
+| `clearSessionOnFailedSync` | По умолчанию `false`. Для `connectWithSession`: при ошибке `sync` вызвать `session.clear()` перед `authorize()` |
+| `debug`, `authDebug` | Логи; также `WEBMAX_DEBUG`, `WEBMAX_AUTH_DEBUG` |
+| `logIncoming`, `logIncomingVerbose` | Режим лога входящих — см. `README` |
+| `maxReconnectAttempts`, `reconnectDelay` | Переподключение WebSocket |
+
+После успешного **`sync()`** при ответе `LOGIN` с полем `tokenAttrs.LOGIN.token`, отличным от текущего, токен обновляется в памяти и в файле сессии (если `saveToken !== false`).
+
 ### Запуск и соединение
 
 | Метод | Описание |
 |-------|----------|
-| `start()` | Подключение, авторизация, обработчики `onStart` |
+| `start()` | Подключение, авторизация, обработчики `onStart`; при ошибке `sync` с токеном из config/options файл сессии **не** очищается; при успехе — опциональный таймер `sessionRefreshIntervalMs` |
 | `connect()` | Только соединение (низкоуровнево) |
-| `connectWithSession()` | Сессия + синхронизация |
+| `connectWithSession()` | Подключение, токен из `sessions/*.json`, `sync()`. При ошибке `sync` — повторная авторизация; очистка файла сессии перед `authorize()` только если `clearSessionOnFailedSync: true` |
 | `handshake()` | Handshake (WebSocket-путь) |
-| `sync()` | LOGIN по токену |
+| `sync()` | `LOGIN` по токену; при новом токене в ответе — сохранение в сессию |
 | `fetchMyProfile()` | Загрузка `me` |
-| `stop()` | Закрыть транспорт |
+| `stop()` | Снять таймер периодического `sync` (если был), закрыть транспорт |
 | `logout()` | Остановка + удаление сессии |
 
 ### Авторизация
