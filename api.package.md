@@ -2,8 +2,6 @@
 
 Краткий перечень возможностей для работы с библиотекой. Подробности и примеры — в `README.md`.
 
-**Версия пакета (справочник синхронизирован с):** 1.2.2+
-
 **Зависимости TCP (IOS/ANDROID):** ответы по сокету сжаты **LZ4**; для распаковки используется **`lz4js`**. См. `README.md` → «Зависимости для Socket транспорта».
 
 ---
@@ -32,42 +30,23 @@
 | Свойство | Описание |
 |----------|----------|
 | `me` | Профиль после авторизации |
-| `session` | Менеджер сессий: `get` / `set` / `clear` / `destroy` / `copyToLastOk`, поле `sessionFile` и др. |
+| `session` | Менеджер сессий |
 | `isConnected`, `isAuthorized` | Состояние |
 | `userAgent` | Текущий User-Agent |
 | `deviceId` | ID устройства |
 | `incomingLogMode` | `'off'` \| `'messages'` \| `'verbose'` |
 
-### Опции конструктора (выборочно)
-
-| Опция | Описание |
-|-------|----------|
-| `name` / `session` | Имя файла сессии в `sessions/` |
-| `token` | Явный токен (приоритет над файлом сессии; см. `README` → приоритет токена) |
-| `configPath` / `config` | Путь к JSON-конфигу с `token`, `agent`, `device_type` и т.д. |
-| `deviceType`, `deviceId`, `ua`, `appVersion`, … | User-Agent и устройство — см. `README` |
-| `saveToken` | По умолчанию `true` — писать токен в сессию после входа |
-| `saveTwofaPassword` | По умолчанию `true` — писать пароль 2FA в сессию после `sendPassword` |
-| `sessionBackup` | По умолчанию `true` — после успешного `sync` копия в `*.last_ok.json` |
-| `sessionRefreshIntervalMs` | Интервал (мс) периодического `sync()` в работающем клиенте; `0` — выкл. Минимум **10000** мс. Алиас: `autoSyncIntervalMs` |
-| `clearSessionOnFailedSync` | По умолчанию `false`. Для `connectWithSession`: при ошибке `sync` вызвать `session.clear()` перед `authorize()` |
-| `debug`, `authDebug` | Логи; также `WEBMAX_DEBUG`, `WEBMAX_AUTH_DEBUG` |
-| `logIncoming`, `logIncomingVerbose` | Режим лога входящих — см. `README` |
-| `maxReconnectAttempts`, `reconnectDelay` | Переподключение WebSocket |
-
-После успешного **`sync()`** при ответе `LOGIN` с полем `tokenAttrs.LOGIN.token`, отличным от текущего, токен обновляется в памяти и в файле сессии (если `saveToken !== false`).
-
 ### Запуск и соединение
 
 | Метод | Описание |
 |-------|----------|
-| `start()` | Подключение, авторизация, обработчики `onStart`; при ошибке `sync` с токеном из config/options файл сессии **не** очищается; при успехе — опциональный таймер `sessionRefreshIntervalMs` |
+| `start()` | Подключение, авторизация, обработчики `onStart` |
 | `connect()` | Только соединение (низкоуровнево) |
-| `connectWithSession()` | Подключение, токен из `sessions/*.json`, `sync()`. При ошибке `sync` — повторная авторизация; очистка файла сессии перед `authorize()` только если `clearSessionOnFailedSync: true` |
+| `connectWithSession()` | Сессия + синхронизация |
 | `handshake()` | Handshake (WebSocket-путь) |
-| `sync()` | `LOGIN` по токену; при новом токене в ответе — сохранение в сессию |
+| `sync()` | На **TCP** первый раз — `LOGIN` (19); каждый следующий — **новое TLS + снова `LOGIN` (19)** (тело с `lastLogin`/счётчиками из сессии; op. **21** на TCP не поддерживается). На **WEB** — `LOGIN` на том же соединении. **`tokenAttrs.LOGIN.token`** — из ответов и уведомлений (рекурсивно) |
 | `fetchMyProfile()` | Загрузка `me` |
-| `stop()` | Снять таймер периодического `sync` (если был), закрыть транспорт |
+| `stop()` | Закрыть транспорт |
 | `logout()` | Остановка + удаление сессии |
 
 ### Авторизация
@@ -151,7 +130,7 @@
 | `getSessionsInfo()` | Список сессий; возвращает **payload** |
 | `WebMaxClient.normalizeSessionsList(payload)` | Массив `{ time, client, info, location, current, raw }` |
 | `closeSessions(payload)` | Закрыть сессии по телу запроса |
-| `closeAllSessionsExceptCurrent()` | Завершить все, кроме текущей; возвращает **payload** |
+| `closeAllSessionsExceptCurrent()` | Завершить все, кроме текущей: только явные **`times`** чужих сессий (без флагов `allExceptCurrent`); возвращает **payload** или `{ skipped: true }` |
 | `getTwoFADetails()` | Параметры 2FA |
 | `setTwoFAPassword({ trackId, password, hint?, email? })` | Установка или смена пароля 2FA |
 
