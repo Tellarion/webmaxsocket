@@ -18,7 +18,7 @@ async function main() {
 
   const client = new WebMaxClient({
     name: process.env.WEBMAX_SESSION || 'sms_session',
-    deviceType: 'IOS',
+    deviceType: 'ANDROID',
     debug: process.env.DEBUG === '1'
   });
 

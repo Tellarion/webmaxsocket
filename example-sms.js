@@ -1,5 +1,5 @@
 /**
- * Пример авторизации по SMS (IOS/ANDROID)
+ * Пример авторизации по SMS (ANDROID)
  * 
  * Использование:
  *   node example-sms.js
@@ -38,10 +38,10 @@ async function main() {
 
   console.log('\n🚀 Запуск клиента с SMS авторизацией...\n');
 
-  // Создаем клиент с IOS deviceType для SMS авторизации
+  // Создаем клиент с Android deviceType для SMS авторизации
   const client = new WebMaxClient({
     name: 'sms_session',
-    deviceType: 'IOS',  // Обязательно для SMS авторизации
+    deviceType: 'ANDROID',  // Обязательно для SMS авторизации
     debug: process.env.DEBUG === '1'
   });
 

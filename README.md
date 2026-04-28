@@ -2,9 +2,9 @@
 
 ## 📖 Описание / Description
 
-**WebMaxSocket** — async Node.js библиотека для работы с внутренним API мессенджера Max. Поддерживает **QR-код авторизацию**, **Token авторизацию**, **SMS-вход** с опциональным **2FA-паролем** (как в приложении Max), и работу через **WebSocket** (WEB) или **TCP Socket** (IOS/ANDROID).
+**WebMaxSocket** — async Node.js библиотека для работы с внутренним API мессенджера Max. Поддерживает **QR-код авторизацию**, **Token авторизацию**, **SMS-вход** с опциональным **2FA-паролем** (как в приложении Max), и работу через **WebSocket** (WEB) или **TCP Socket** (ANDROID).
 
-**Текущая версия пакета: 1.2.3**
+**Текущая версия пакета: 1.2.4**
 
 Сводка всех методов: **[api.package.md](./api.package.md)**.
 
@@ -13,8 +13,8 @@
 - ✅ **QR-код авторизация** / QR code authentication  
 - ✅ **QR для привязки устройства** (`showLinkDeviceQR`) после входа по SMS/TCP — тот же сценарий, что «Профиль → Устройства → Подключить устройство» в приложении
 - ✅ **Token авторизация** / Token authentication
-- ✅ **SMS + 2FA по паролю** (IOS/ANDROID): после кода из SMS при необходимости второй шаг `AUTH_LOGIN_CHECK_PASSWORD` (opcode `0x73`); сохранение пароля в сессии опционально (`saveTwofaPassword`)
-- ✅ **Два транспорта:** WebSocket (WEB) и TCP Socket (IOS/ANDROID)
+- ✅ **SMS + 2FA по паролю** (ANDROID): после кода из SMS при необходимости второй шаг `AUTH_LOGIN_CHECK_PASSWORD` (opcode `0x73`); сохранение пароля в сессии опционально (`saveTwofaPassword`)
+- ✅ **Два транспорта:** WebSocket (WEB) и TCP Socket (ANDROID)
 - ✅ **Автоматическое сохранение сессий** / Automatic session storage
 - ✅ **Ротация токена после `sync()`:** если сервер возвращает новый `token` в ответе `LOGIN`, он сохраняется в `sessions/*.json` (как при SMS/QR)
 - ✅ **Периодический `sync()`** (`sessionRefreshIntervalMs` / `autoSyncIntervalMs`) для продления сессии: на **TCP** после первого `LOGIN` каждый следующий `sync()` — **новое TLS и снова `LOGIN` (19)** (на сокете нельзя второй `LOGIN` подряд; **`SYNC` (21)** с TCP сервер не принимает — см. «Сессии»)
@@ -38,7 +38,7 @@
 npm install webmaxsocket
 ```
 
-### Зависимости для Socket транспорта (IOS/ANDROID) / Socket transport dependencies
+### Зависимости для Socket транспорта (ANDROID) / Socket transport dependencies
 
 Ответы сервера по TCP содержат полезную нагрузку в **LZ4**-блоках (поверх **msgpack**). Для распаковки используется **`lz4js`** — чистый JavaScript, **без node-gyp** и нативной сборки, в том числе на Windows без Visual Studio C++. Он входит в зависимости `webmaxsocket` и ставится вместе с пакетом. При необходимости можно доустановить вручную:
 
@@ -52,7 +52,7 @@ npm install lz4js
 npm install lz4
 ```
 
-**Примечание:** Для обычной QR-авторизации (WEB) дополнительные зависимости не нужны. Socket транспорт используется только после сохранения сессии или при явном указании `deviceType: 'IOS'`/`'ANDROID'`.
+**Примечание:** Для обычной QR-авторизации (WEB) дополнительные зависимости не нужны. Socket транспорт используется только после сохранения сессии или при явном указании `deviceType: 'ANDROID'`.
 
 ## 🚀 Быстрый старт / Quick Start
 
@@ -115,14 +115,14 @@ main().catch(console.error);
 - При следующем запуске клиент **автоматически переключится на TCP Socket** для стабильности
 - Повторная авторизация не требуется
 
-#### Способ 2: SMS авторизация (IOS/ANDROID)
+#### Способ 2: SMS авторизация (ANDROID)
 
 Авторизация по номеру телефона с кодом из SMS. Если на аккаунте включена **двухфакторная защита паролем**, после верного SMS-кода сервер возвращает **`passwordChallenge`**; тогда нужен второй шаг — **`sendPassword`** (протокол `AUTH_LOGIN_CHECK_PASSWORD`, как в официальном клиенте).
 
 ```javascript
 const client = new WebMaxClient({
   name: 'my_session',
-  deviceType: 'IOS', // Обязательно для SMS
+  deviceType: 'ANDROID', // Обязательно для SMS
   // saveTwofaPassword: true  // по умолчанию: сохранить пароль 2FA в sessions/*.json
 });
 
@@ -153,7 +153,7 @@ node example-sms.js
 node example-sms.js +79001234567  # с номером в аргументе
 ```
 
-#### QR после входа: привязка второго устройства (IOS/ANDROID)
+#### QR после входа: привязка второго устройства (ANDROID)
 
 Когда вы уже авторизованы по **TCP** (SMS и сохранённая сессия), запрос **`GET_QR` на том же соединении недоступен** (ответ сервера: недопустимое состояние сессии). Для сценария как в приложении — **показать QR, телефон сканирует** — используйте метод **`showLinkDeviceQR()`**: библиотека открывает **отдельное краткоживущее WebSocket-подключение** (как у [web.max.ru](https://web.max.ru)), запрашивает QR, печатает его в консоль и при необходимости ждёт сканирования.
 
@@ -172,7 +172,7 @@ const data = await client.showLinkDeviceQR({ waitForScan: false });
 
 Опции: `waitForScan` (по умолчанию `true`), `small` — компактный QR в терминале.
 
-**Версия клиента:** для выдачи QR сервер ожидает актуальный **`appVersion`** в User-Agent (не ниже **25.12.13**). В конструкторе по умолчанию используется **25.12.14**; при необходимости передайте `appVersion: '25.21.3'` или новее.
+**Версия клиента:** для выдачи QR сервер ожидает актуальный **`appVersion`** в User-Agent (не ниже **25.12.13**). В конструкторе по умолчанию используется **26.14.1**.
 
 Если сервер отвечает **`qr_login.disabled`**, проверьте версию приложения в опциях, откройте [web.max.ru](https://web.max.ru) в браузере или войдите на втором устройстве по номеру телефона.
 
@@ -223,17 +223,18 @@ await client.start();
 ```json
 {
   "token": "An_Sx6HQ9HDiftNk...",
-  "ua": "Mozilla/5.0 (iPhone...)",
-  "device_type": 2,
-  "deviceType": "IOS"
+  "ua": "Mozilla/5.0 (Linux; Android 14) ...",
+  "device_type": 3,
+  "deviceType": "ANDROID",
+  "appVersion": "26.14.1",
+  "buildNumber": 6686
 }
 ```
 
 #### Транспорты
 
 - **WEB** (`deviceType: 'WEB'` или `device_type: 1`) → WebSocket (ws-api.oneme.ru)
-- **IOS** (`deviceType: 'IOS'` или `device_type: 2`) → TCP Socket (api.oneme.ru)
-- **ANDROID** (`deviceType: 'ANDROID'` или `device_type: 3`) → TCP Socket (api.oneme.ru)
+- **ANDROID** (`deviceType: 'ANDROID'` или `device_type: 2/3`) → TCP Socket (api.oneme.ru)
 
 Клиент **автоматически выбирает** правильный транспорт на основе сохраненного deviceType.
 
@@ -250,7 +251,7 @@ const client = new WebMaxClient({
   name: 'session',        // Имя сессии (для сохранения авторизации)
   token: 'An_Sx6H...',    // Токен авторизации (опционально)
   configPath: 'myconfig', // Путь к config файлу (опционально)
-  deviceType: 'WEB',      // Тип устройства: 'WEB', 'IOS', 'ANDROID', 'DESKTOP' (опционально)
+  deviceType: 'WEB',      // Тип устройства: 'WEB' или 'ANDROID' (опционально)
   saveToken: true,        // Сохранять токен в сессию (по умолчанию true)
   debug: false,           // TCP/WebSocket: краткий лог opcode; также учитывается WEBMAX_DEBUG=1, DEBUG=1
   // Лог входящих (JSON в консоль), см. ниже:
@@ -263,13 +264,13 @@ const client = new WebMaxClient({
   sessionRefreshIntervalMs: 0, // Периодический sync (мс), минимум 10_000; 0 — выключено. Алиас: autoSyncIntervalMs
   clearSessionOnFailedSync: false, // connectWithSession: при ошибке sync вызвать session.clear() перед authorize() (по умолчанию false)
   // User-Agent / клиент (важно для GET_QR, см. showLinkDeviceQR):
-  appVersion: '25.12.14', // Рекомендуется ≥ 25.12.13 для запроса QR
+  appVersion: '26.14.1',  // Актуальная версия Android-клиента из APK
   ua: 'Mozilla/5.0 ...', // или headerUserAgent
-  osVersion: 'Windows 11',
-  screen: '1920x1080 1.0x',
+  osVersion: '14',
+  screen: '360x780 3.0x',
   timezone: 'Europe/Moscow',
   locale: 'ru',
-  buildNumber: 0x97cb,    // опционально
+  buildNumber: 6686,      // опционально
   clientSessionId: 1      // опционально
 });
 ```
@@ -298,7 +299,7 @@ await client.start();
 
 ##### `authorizeBySMS(phone)`
 
-Авторизация по номеру телефона через SMS (только для IOS/ANDROID). Возвращает объект с полями **`tempToken`**, **`phone`**, **`sendCode`**.
+Авторизация по номеру телефона через SMS (только для ANDROID). Возвращает объект с полями **`tempToken`**, **`phone`**, **`sendCode`**.
 
 **`sendCode(code)`** после ввода кода из SMS:
 
@@ -321,7 +322,7 @@ if (out && out.needsPassword) await out.sendPassword('…');
 Показать в консоли **QR-код для привязки устройства** (как в приложении Max: телефон сканирует QR). Нужна **уже выполненная авторизация** (`start()` или `connect` + `sync`).
 
 - Для **WEB** запрос выполняется по текущему WebSocket.
-- Для **IOS/ANDROID** после входа по TCP используется **второе** WebSocket-подключение без повторного `LOGIN` на той сессии (иначе `GET_QR` на том же TCP недоступен).
+- Для **ANDROID** после входа по TCP используется **второе** WebSocket-подключение без повторного `LOGIN` на той сессии (иначе `GET_QR` на том же TCP недоступен).
 
 ```javascript
 await client.showLinkDeviceQR();
@@ -725,7 +726,7 @@ ChatActions.RECORDING_VIDEO // Записывает видео
 
 ### MaxSocketTransport
 
-Низкоуровневый TCP Socket транспорт для IOS/ANDROID (api.oneme.ru). Входящие пакеты с флагом сжатия распаковываются через **LZ4** (см. раздел **«Зависимости для Socket транспорта»** выше).
+Низкоуровневый TCP Socket транспорт для ANDROID (api.oneme.ru). Входящие пакеты с флагом сжатия распаковываются через **LZ4** (см. раздел **«Зависимости для Socket транспорта»** выше).
 
 #### Прямое использование (advanced)
 
@@ -733,8 +734,8 @@ ChatActions.RECORDING_VIDEO // Записывает видео
 const { MaxSocketTransport } = require('webmaxsocket');
 
 const transport = new MaxSocketTransport({
-  deviceType: 'IOS',
-  ua: 'Mozilla/5.0 (iPhone...)',
+  deviceType: 'ANDROID',
+  ua: 'Mozilla/5.0 (Linux; Android 14) ...',
   deviceId: 'your-device-id',
   debug: true
 });
@@ -777,19 +778,9 @@ node example-sms.js
 node example-sms.js +79001234567
 ```
 
-### Пример 4: IOS/ANDROID Socket (example-ios.js)
+### Пример 4: QR для второго устройства после SMS
 
-```bash
-# С готовым конфигом
-node example-ios.js
-
-# С отладкой
-node example-ios.js --debug
-```
-
-### Пример 5: QR для второго устройства после SMS
-
-После успешного `start()` с сохранённой сессией IOS/Android вызовите `showLinkDeviceQR()` (см. раздел **«QR после входа»** выше).
+После успешного `start()` с сохранённой Android-сессией вызовите `showLinkDeviceQR()` (см. раздел **«QR после входа»** выше).
 
 ## Структура проекта
 
@@ -816,7 +807,6 @@ webmaxsocket/
 ├── example.js              # QR-авторизация
 ├── example-token.js        # Token авторизация
 ├── example-sms.js          # SMS авторизация
-├── example-ios.js          # IOS/ANDROID Socket
 ├── package.json
 ├── api.package.md          # Справочник API (все методы)
 └── README.md
@@ -828,7 +818,7 @@ webmaxsocket/
 
 **Токен после `sync()`:** при успешном `LOGIN` (вызов `sync()`) сервер может вернуть новый токен в `tokenAttrs.LOGIN.token`. Если он отличается от сохранённого, библиотека обновляет `this._token` и файл сессии (если `saveToken !== false`). Так ротация на стороне Max не теряется между перезапусками.
 
-**TCP (IOS/ANDROID) и повторный `sync()`:** на одном TLS‑сокете **второй подряд `LOGIN` (19)** сервер отклоняет («Недопустимое состояние сессии»). Запрос **`SYNC` (21)** на том же транспорте стабильно даёт «Что-то пошло не так» (в веб-клиенте повторная синхронизация идёт через **`LOGIN` (19)**, не через 21). Поэтому после первого успешного `LOGIN` каждый следующий **`sync()`** на TCP: **закрыть сокет → новое соединение → полный `LOGIN` (19)** с телом как у веб (`lastLogin`, счётчики, `presenceSync: -1`, `userAgent`). На **WEB** каждый `sync()` по-прежнему идёт как `LOGIN` на том же WebSocket.
+**TCP (ANDROID) и повторный `sync()`:** на одном TLS‑сокете **второй подряд `LOGIN` (19)** сервер отклоняет («Недопустимое состояние сессии»). Запрос **`SYNC` (21)** на том же транспорте стабильно даёт «Что-то пошло не так» (в веб-клиенте повторная синхронизация идёт через **`LOGIN` (19)**, не через 21). Поэтому после первого успешного `LOGIN` каждый следующий **`sync()`** на TCP: **закрыть сокет → новое соединение → полный `LOGIN` (19)** с телом как у веб (`lastLogin`, счётчики, `presenceSync: -1`, `userAgent`). На **WEB** каждый `sync()` по-прежнему идёт как `LOGIN` на том же WebSocket.
 
 **Параллельные RPC на одном TCP:** транспорт сопоставляет ответы по **`seq % 256`**. Не вызывайте **`sendAndWait`** (и методы поверх него: `sync`, `getSessionsInfo`, …) **параллельно** на одном клиенте — возможна путаница ответов и ложные ошибки. Выполняйте запросы **последовательно** или используйте очередь.
 
@@ -888,7 +878,7 @@ DEBUG=1 node example.js
 
 2. **QR для нового устройства после входа по SMS/TCP:** Используйте `showLinkDeviceQR()`. Это не отдельный опкод в протоколе, а тот же `GET_QR`, что и у веб-клиента; для уже залогиненного TCP-сокета запрос выполняется через **эфемерное WebSocket-подключение** (временный файл сессии `_link_qr_*` удаляется после завершения).
 
-3. **Версия `appVersion` и QR:** Слишком старая версия в User-Agent может привести к ответу `qr_login.disabled` на `GET_QR`. Задайте в конструкторе актуальную строку (по умолчанию **25.12.14**).
+3. **Версия `appVersion` и QR:** Слишком старая версия в User-Agent может привести к ответу `qr_login.disabled` на `GET_QR`. Задайте в конструкторе актуальную строку (по умолчанию **26.14.1**).
 
 4. **Разница между sendMessage и sendMessageChannel:**
    - `sendMessage()` - отправка с уведомлением (notify: true) для обычных чатов
@@ -900,13 +890,18 @@ DEBUG=1 node example.js
 
 7. **TCP и keep-alive (PING):** сервер периодически шлёт `PING`. На WebSocket клиент отвечает `sendPong`; на **TCP** ответ на серверный `PING` — **`PING` с пустым payload**. Дополнительно клиент может слать исходящий **`PING` с `{ interactive: true }`** раз в **30 с** (как веб), опция **`tcpInteractivePingMs`** ( **`0`** — выключить).
 
-8. **LZ4:** для IOS/ANDROID входящие данные распаковываются из LZ4-блоков; **`lz4js`** входит в зависимости пакета. При необходимости можно установить нативный **`lz4`** (см. раздел **«Зависимости для Socket транспорта»**).
+8. **LZ4:** для ANDROID входящие данные распаковываются из LZ4-блоков; **`lz4js`** входит в зависимости пакета. При необходимости можно установить нативный **`lz4`** (см. раздел **«Зависимости для Socket транспорта»**).
 
 9. **Повторный `sync()` на TCP:** см. **«Сессии»** — **новое TLS и снова `LOGIN` (19)**; второй **`LOGIN` (19)** подряд на **том же** сокете сервер не принимает; **`SYNC` (21)** на TCP не использовать.
 
 10. **`closeAllSessionsExceptCurrent`:** не подставляйте в **`closeSessions`** сырые флаги «закрыть все кроме текущего» без явного списка сессий — есть риск инвалидации своего токена; используйте готовый метод.
 
 ## 📌 История версий / Changelog
+
+### 1.2.4
+
+- **ANDROID по умолчанию для SMS/TCP:** `device_type: 2/3` нормализуется в `ANDROID`; дефолтный fingerprint обновлён до `appVersion: 26.14.1`, `buildNumber: 6686`.
+- **Удалён устаревший socket example:** SMS-примеры и низкоуровневый TCP-путь теперь используют Android-профиль.
 
 ### 1.2.3
 

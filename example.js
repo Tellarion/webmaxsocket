@@ -9,7 +9,7 @@ async function main() {
   // Инициализация клиента
   const client = new WebMaxClient({
     name: 'example_session', // Имя сессии
-    appVersion: '25.12.14'
+    appVersion: '26.14.1'
   });
 
   // Обработчик запуска
