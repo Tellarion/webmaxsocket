@@ -14,6 +14,13 @@ const { UserAgentPayload } = require('./lib/userAgent');
 const { downloadUrlToTempFile, extFromContentType, extFromAttachType } = require('./lib/downloadMedia');
 const { resolveIncomingLogMode, printIncomingLog } = require('./lib/incomingLog');
 const { parseQrTrackId } = require('./lib/qrWebLogin');
+const {
+  summarizeIncomingCall,
+  isCallAttach,
+  extractCallAttachesFromNotifPayload,
+  summarizeCallAttach,
+  formatCallLogLine,
+} = require('./lib/callHelpers');
 
 module.exports = {
   WebMaxClient,
@@ -32,6 +39,11 @@ module.exports = {
   extFromAttachType,
   resolveIncomingLogMode,
   printIncomingLog,
-  parseQrTrackId
+  parseQrTrackId,
+  summarizeIncomingCall,
+  isCallAttach,
+  extractCallAttachesFromNotifPayload,
+  summarizeCallAttach,
+  formatCallLogLine,
 };
 

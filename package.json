@@ -1,6 +1,6 @@
 {
   "name": "webmaxsocket",
-  "version": "1.2.4",
+  "version": "1.2.5",
   "description": "Node.js client for Max Messenger: QR, token, SMS auth, 2FA, device sessions (TCP)",
   "main": "index.js",
   "scripts": {

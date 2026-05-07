@@ -18,12 +18,22 @@
 | `UserAgentPayload` | User-Agent для handshake |
 | `downloadUrlToTempFile`, `extFromContentType`, `extFromAttachType` | Скачивание медиа по URL |
 | `resolveIncomingLogMode`, `printIncomingLog` | Режим лога входящих |
+| `summarizeIncomingCall`, `isCallAttach`, `extractCallAttachesFromNotifPayload`, `summarizeCallAttach`, `formatCallLogLine` | Парсинг уведомлений о звонках (см. README) |
 
 ---
 
 ## `WebMaxClient`
 
-Клиент наследует `EventEmitter`: `on`, `once`, `emit`, `off` (в т.ч. событие `connected`, `raw_message`).
+Клиент наследует `EventEmitter`: `on`, `once`, `emit`, `off` (в т.ч. `connected`, `raw_message`, **`incoming_call`**, **`call_log`**).
+
+### События звонков (TCP)
+
+| Событие | Когда |
+|---------|--------|
+| `incoming_call` | Уведомление **`NOTIF_INCOMING_CALL`** (opcode 137) |
+| `call_log` | **`NOTIF_MESSAGE`** с вложением `_type: "CALL"` (итог звонка в чате) |
+
+Парные регистраторы: **`onIncomingCall(handler)`**, **`onCallLog(handler)`** (данные те же).
 
 ### Свойства (полезные)
 
@@ -121,6 +131,8 @@
 | `setHiddenOnline(hidden)` | Скрыть онлайн |
 | `setFindableByPhone(mode)` | Поиск по телефону |
 | `setCallsPrivacyMode(mode)` | Звонки |
+| `hangupCall(call, options?)` | Экспериментально: завершить звонок через `vchat.hangupConversation` |
+| `rejectIncomingCall(call, options?)` | Экспериментально: отклонить входящий звонок (`reason=REJECTED`) |
 | `setChatsInvitePrivacy(mode)` | Приглашения в чаты |
 
 ### Сессии (устройства) и 2FA
@@ -142,6 +154,8 @@
 | `onMessage(handler)` | Новое сообщение |
 | `onMessageRemoved(handler)` | Удалено сообщение |
 | `onChatAction(handler)` | Действие в чате |
+| `onIncomingCall(handler)` | Входящий звонок (opcode 137) |
+| `onCallLog(handler)` | Запись о звонке в чате (`CALL` во вложениях сообщения) |
 | `onError(handler)` | Ошибки |
 
 ### Прочее

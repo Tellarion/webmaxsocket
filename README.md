@@ -4,7 +4,7 @@
 
 **WebMaxSocket** — async Node.js библиотека для работы с внутренним API мессенджера Max. Поддерживает **QR-код авторизацию**, **Token авторизацию**, **SMS-вход** с опциональным **2FA-паролем** (как в приложении Max), и работу через **WebSocket** (WEB) или **TCP Socket** (ANDROID).
 
-**Текущая версия пакета: 1.2.4**
+**Текущая версия пакета: 1.2.5**
 
 Сводка всех методов: **[api.package.md](./api.package.md)**.
 
@@ -28,7 +28,8 @@
 - ✅ **Сведения о 2FA и установка пароля по trackId** (`getTwoFADetails`, `setTwoFAPassword`)
 - ✅ **Редактирование и удаление сообщений** / Edit and delete messages
 - ✅ **Event-driven архитектура** / Event-driven architecture
-- ✅ **Обработка входящих уведомлений** / Handle incoming notifications
+- ✅ **Входящие звонки (TCP):** опкод **`NOTIF_INCOMING_CALL` (137)**, событие **`incoming_call`** / **`onIncomingCall`**, хелперы **`summarizeIncomingCall`** и др.
+- ✅ **Итог звонка в чате:** в **`NOTIF_MESSAGE`** приходит вложение `_type: "CALL"` (`hangupType`, `duration`, `conversationId`) — событие **`call_log`** / **`onCallLog`**, утилиты **`extractCallAttachesFromNotifPayload`**, **`formatCallLogLine`**
 - ✅ **Встроенный лог входящих** (`logIncoming`, `WEBMAX_DEBUG`, `WEBMAX_SILENT`) — JSON в консоль без ручных обработчиков
 - ✅ **TypeScript-ready** структура / TypeScript-ready structure
 
@@ -53,6 +54,56 @@ npm install lz4
 ```
 
 **Примечание:** Для обычной QR-авторизации (WEB) дополнительные зависимости не нужны. Socket транспорт используется только после сохранения сессии или при явном указании `deviceType: 'ANDROID'`.
+
+## 📞 Входящие звонки (TCP / ANDROID)
+
+При входящем вызове сервер шлёт **`NOTIF_INCOMING_CALL`** (**opcode 137**): `callerId`, `conversationId`, `type` (`AUDIO` / `VIDEO`), `vcp` (параметры медиа — не логируйте публично).
+
+После ответа / отбоя в том же диалоге часто приходит обычное **`NOTIF_MESSAGE`** с пустым текстом и вложением **`_type: "CALL"`**:
+
+| `hangupType` | `duration` | Наблюдаемый смысл |
+|--------------|------------|-------------------|
+| `REJECTED` | `0` | Дозвон не завершился разговором (отклонение, сброс до ответа и т.п.) |
+| `HUNGUP` | `> 0` | Был разговор, затем положили трубку (мс) |
+
+Связать события одного звонка удобно по **`conversationId`**.
+
+**События `EventEmitter`:** `incoming_call` (payload как с сервера), `call_log` (`{ chatId, message, callAttaches, summaries }`).
+
+**Парные методы (как `onMessage`):** `onIncomingCall(handler)`, `onCallLog(handler)`.
+
+**Отклонение входящего:** APK Max использует OK API метод **`vchat.hangupConversation`** с параметрами `conversationId`, `reason`, `anonymToken?`. В библиотеке добавлены экспериментальные методы **`rejectIncomingCall(payload)`** и **`hangupCall(conversationIdOrPayload, { reason? })`**. Для входящего дозвона используйте `reason: 'REJECTED'` (по умолчанию в `rejectIncomingCall`).
+
+**Утилиты:** `summarizeIncomingCall`, `extractCallAttachesFromNotifPayload`, `summarizeCallAttach`, `formatCallLogLine`, `isCallAttach`.
+
+```javascript
+const {
+  WebMaxClient,
+  summarizeIncomingCall,
+  formatCallLogLine,
+} = require('webmaxsocket');
+
+async function main() {
+  const client = new WebMaxClient({ name: 'sms_session', deviceType: 'ANDROID' });
+
+  client.onIncomingCall(async (payload) => {
+    console.log('Звонок:', summarizeIncomingCall(payload));
+
+    // Экспериментально: сбросить входящий вызов.
+    // Если OK API вернёт ошибку авторизации, передайте okApiSessionKey/okApiSessionSecret
+    // в конструктор или в options метода.
+    await client.rejectIncomingCall(payload);
+  });
+
+  client.onCallLog(({ summaries }) => {
+    summaries.forEach((s) => console.log(formatCallLogLine(s)));
+  });
+
+  await client.start();
+}
+
+main().catch(console.error);
+```
 
 ## 🚀 Быстрый старт / Quick Start
 
@@ -897,6 +948,14 @@ DEBUG=1 node example.js
 10. **`closeAllSessionsExceptCurrent`:** не подставляйте в **`closeSessions`** сырые флаги «закрыть все кроме текущего» без явного списка сессий — есть риск инвалидации своего токена; используйте готовый метод.
 
 ## 📌 История версий / Changelog
+
+### 1.2.5
+
+- **`Opcode.NOTIF_INCOMING_CALL` (137)** — имя опкода в `getOpcodeName`; обработка в TCP/WebSocket: событие **`incoming_call`**, **`onIncomingCall`**, плюс **`raw_message`** как раньше.
+- **`onCallLog`** / событие **`call_log`**: при **`NOTIF_MESSAGE`** с вложением **`_type: "CALL"`** (итог звонка: `hangupType`, `duration`, `conversationId`).
+- **`rejectIncomingCall`** / **`hangupCall`**: экспериментальная отправка сброса звонка через найденный в APK OK API метод **`vchat.hangupConversation`** (`conversationId`, `reason=REJECTED`).
+- Модуль **`lib/callHelpers.js`** (экспорт из пакета): `summarizeIncomingCall`, `extractCallAttachesFromNotifPayload`, `summarizeCallAttach`, `formatCallLogLine`, `isCallAttach`.
+- **`EventTypes.INCOMING_CALL`**, **`EventTypes.CALL_LOG`**.
 
 ### 1.2.4
 
