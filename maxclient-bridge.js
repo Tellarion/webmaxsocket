@@ -1,6 +1,6 @@
 'use strict';
 
-/* bridge experemental for pc client, lib webmaxsocket */
+/* bridge experemental for pc client, lib webmaxsocket (its works for me) */
 /* tellarion.dev */
 
 

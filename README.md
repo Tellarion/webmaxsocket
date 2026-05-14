@@ -4,9 +4,22 @@
 
 **WebMaxSocket** — async Node.js библиотека для работы с внутренним API мессенджера Max. Поддерживает **QR-код авторизацию**, **Token авторизацию**, **SMS-вход** с опциональным **2FA-паролем** (как в приложении Max), и работу через **WebSocket** (WEB) или **TCP Socket** (ANDROID).
 
-**Текущая версия пакета: 1.2.5**
+**Текущая версия пакета: 1.2.6**
 
 Сводка всех методов: **[api.package.md](./api.package.md)**.
+
+### Журнал изменений (выдержка)
+
+#### 1.2.6
+
+- **`client.lastSyncPayload`** — сохраняется последний успешный ответ **`LOGIN`/`sync()`** (в т.ч. массив `chats`). На **TCP** список **`getChats()`** иногда пустой, тогда чаты брать из **`lastSyncPayload.chats`**.
+- **Скачивание документов `FILE` без `baseUrl` в истории:** **`requestFileDownloadUrl({ chatId, messageId, fileId, fileName?, … })`** — сервер возвращает временный HTTPS-**`url`** для скачивания.
+- **`message.downloadAttachment()`** — для **`_type: FILE`** без URL сам вызывает **`requestFileDownloadUrl`** (нужны корректный **`chatId`** сообщения и **`messageId`**).
+- **`getHistory`**: в каждое сообщение подмешивается **`chatId`** из аргумента запроса (в сырых сообщениях его часто нет).
+- **`Message`**: корректно обрабатывается **`chatId === 0`** (например «Избранное к себе»).
+- **TCP + msgpack:** при наличии **`BigInt`** в исходящем payload включается **`useBigInt64`** при кодировании; входящие пакеты декодируются с **`useBigInt64`**, чтобы **`message.id`** и другие int64 не терялись (выше **`Number.MAX_SAFE_INTEGER`**).
+- **`downloadMedia`:** расширена карта MIME → расширение (`text/plain`, `application/pdf`, …).
+- Новый пример: **`example-download-files.js`** (история чата → папка `downloads/`).
 
 ## ✨ Особенности / Features
 
@@ -21,7 +34,7 @@
 - ✅ **Автовыбор транспорта** после QR-авторизации (переход на TCP)
 - ✅ **Отправка и получение сообщений** / Send and receive messages
 - ✅ **Загрузка медиа с диска:** `uploadPhoto`, `uploadVideo`, `uploadFile`, `uploadAudio` → `attachments` в `sendMessage` / `sendMessageChannel` / `reply`
-- ✅ **Скачивание вложений по URL** (`baseUrl` из `attaches`) во временный файл — `downloadUrlToTempFile`, `message.downloadAttachment()`
+- ✅ **Скачивание вложений:** по **`baseUrl`/`url`** — `downloadUrlToTempFile`, `message.downloadAttachment()`; документы **`FILE`** без URL в истории — **`requestFileDownloadUrl()`**
 - ✅ **Группы и каналы:** создание, инвайты, админы, участники, ссылки, mute, подписка — см. раздел API
 - ✅ **Реакции, пины, настройки профиля и приватности, контакты / блокировка**
 - ✅ **Список устройств (сессий)** и **завершение других сеансов** (`getSessionsInfo`, `closeAllSessionsExceptCurrent`) — как «Профиль → Устройства» в Max
@@ -549,13 +562,23 @@ const user = await client.getUser(123);
 const chats = await client.getChats(50, 0);
 ```
 
-##### `getHistory(chatId, limit, offset)`
+##### `getHistory(chatId, from?, backward?, forward?)`
 
-Получает историю сообщений.
+Получает историю сообщений. У каждого элемента в массиве будет **`chatId`**, совпадающий с запрошенным чатом (в ответе сервера поле часто отсутствует).
 
 ```javascript
-const messages = await client.getHistory(123, 50, 0);
+const messages = await client.getHistory(123, Date.now(), 50, 0);
 ```
+
+##### `requestFileDownloadUrl({ chatId, messageId, fileId, fileName?, requestId?, attachLocalId? })`
+
+Запрашивает **временный HTTPS URL** для вложения **`FILE`**, если в **`attaches`** нет **`baseUrl`**. Идентификаторы **`messageId`**, **`fileId`**, **`chatId`** должны совпадать с данными сообщения (для больших id используйте **`bigint`** из объекта **`Message`**, не округляйте в обычный **`Number`**).
+
+Возвращает **`Promise<string>`** (URL). Проще вызывать **`message.downloadAttachment()`**, он подставит нужные поля сам.
+
+##### Свойство `lastSyncPayload`
+
+После успешного **`sync()`** — объект последнего ответа сервера (поля вроде **`chats`**, **`profile`**, …). Удобно, если **`getChats()`** на TCP вернул пустой список.
 
 ##### `stop()`
 
@@ -682,7 +705,12 @@ await message.forward(789);
 
 ##### `downloadAttachment(index, options?)`
 
-Скачивает вложение по полю **`baseUrl`** (или `url`) из `message.attachments[index]` в **временный файл**. По умолчанию каталог — `os.tmpdir()` (на Windows обычно `%TEMP%`). Имя файла генерируется автоматически; расширение берётся из заголовка `Content-Type`, при необходимости — из типа вложения (`_type`, например `PHOTO`).
+Скачивает вложение в файл (по умолчанию каталог **`os.tmpdir()`**). Логика:
+
+- если у вложения есть **`baseUrl`** или **`url`** (часто **`PHOTO`**, стикеры и т.д.) — обычный HTTPS-запрос;
+- если **`_type === 'FILE'`** и URL нет — внутри вызывается **`client.requestFileDownloadUrl()`** (нужны **`message.chatId`** и точный **`message.id`**; после **`getHistory`** они выставлены, **`id` может быть `bigint`**).
+
+Опции: **`dir`**, **`filename`** (basename). Расширение подбирается по **`Content-Type`** и типу вложения.
 
 Возвращает `{ path, contentType }`.
 
@@ -829,9 +857,21 @@ node example-sms.js
 node example-sms.js +79001234567
 ```
 
-### Пример 4: QR для второго устройства после SMS
+### Пример 5: Скачивание вложений из истории чата (example-download-files.js)
 
-После успешного `start()` с сохранённой Android-сессией вызовите `showLinkDeviceQR()` (см. раздел **«QR после входа»** выше).
+Нужна **сохранённая Android-сессия** (`sessions/<name>.json`). Скрипт вызывает **`sync()`**, читает историю и сохраняет вложения в **`./downloads/`**.
+
+```bash
+cd node_modules/webmaxsocket   # или из корня клона репозитория
+
+# chatId — число или 0 (например «Избранное к себе»)
+node example-download-files.js 0 30
+
+# Имя сессии и глубина истории через env
+SESSION_NAME=sms_session BACKWARD=50 node example-download-files.js 123456
+
+npm run example:download -- 0 20
+```
 
 ## Структура проекта
 
@@ -858,6 +898,7 @@ webmaxsocket/
 ├── example.js              # QR-авторизация
 ├── example-token.js        # Token авторизация
 ├── example-sms.js          # SMS авторизация
+├── example-download-files.js  # Скачивание вложений из истории чата
 ├── package.json
 ├── api.package.md          # Справочник API (все методы)
 └── README.md

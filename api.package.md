@@ -100,7 +100,8 @@
 | Метод | Описание |
 |-------|----------|
 | `getChats(marker?)` | Список чатов |
-| `getHistory(chatId, from?, backward?, forward?)` | История |
+| `getHistory(chatId, from?, backward?, forward?)` | История; у каждого `Message` дополняется `chatId` |
+| `requestFileDownloadUrl({ chatId, messageId, fileId, fileName?, … })` | Временный URL для скачивания **FILE**, если нет `baseUrl` |
 | `getChatInfo(chatIds)` | Инфо по id |
 | `resolveLink(link)` | LINK_INFO |
 | `joinChatByLink(link)` | Вступить по ссылке |
@@ -158,6 +159,12 @@
 | `onCallLog(handler)` | Запись о звонке в чате (`CALL` во вложениях сообщения) |
 | `onError(handler)` | Ошибки |
 
+### Состояние после `sync()`
+
+| Поле | Описание |
+|------|----------|
+| `lastSyncPayload` | Последний успешный ответ `LOGIN`/`sync()` (`chats`, `profile`, …). На TCP, если `getChats()` пустой, использовать `lastSyncPayload.chats` |
+
 ### Прочее
 
 | Метод | Описание |
@@ -190,7 +197,7 @@
 | `edit({ text, … })` | Редактировать |
 | `delete()` | Удалить |
 | `forward(chatId)` | В `Message` вызывает `client.forwardMessage` — метод на клиенте может отсутствовать, проверьте версию |
-| `downloadAttachment(index?, options?)` | Скачать вложение по `baseUrl` во временный файл |
+| `downloadAttachment(index?, options?)` | Сохранить вложение в файл (`baseUrl` или запрос URL для FILE) |
 | `toJSON()`, `toString()` | Сериализация |
 
 ---
