@@ -4,10 +4,22 @@
  * Использование:
  *   node example-sms.js
  *   node example-sms.js +79001234567  # с номером в аргументе
+ *   USE_LAST_OK=1 — подмешать sessions/sms_session.last_ok.json (см. example-download-files.js)
  */
 
+const fs = require('fs');
+const path = require('path');
 const readline = require('readline');
 const { WebMaxClient } = require('./index');
+
+const SESSION_NAME = process.env.SESSION_NAME || 'sms_session';
+const useLastOk =
+  process.env.USE_LAST_OK === '1' ||
+  process.env.USE_LAST_OK === 'true' ||
+  process.env.USE_LAST_OK === 'yes';
+
+/** Активный клиент для корректного закрытия TCP по Ctrl+C */
+let activeClient = null;
 
 function ask(question) {
   const rl = readline.createInterface({
@@ -22,28 +34,51 @@ function ask(question) {
   });
 }
 
+function validatePhone(phone) {
+  return /^\+?\d{10,15}$/.test(String(phone).replace(/\s/g, ''));
+}
+
 async function main() {
-  // Получаем номер телефона из аргумента или запрашиваем
-  let phone = process.argv[2];
-  
-  if (!phone) {
-    phone = await ask('📱 Введите номер телефона (+79001234567): ');
-  }
-
-  // Валидация номера
-  if (!/^\+?\d{10,15}$/.test(phone.replace(/\s/g, ''))) {
-    console.error('❌ Неверный формат номера телефона');
-    process.exit(1);
-  }
-
   console.log('\n🚀 Запуск клиента с SMS авторизацией...\n');
 
   // Создаем клиент с Android deviceType для SMS авторизации
   const client = new WebMaxClient({
-    name: 'sms_session',
+    name: SESSION_NAME,
     deviceType: 'ANDROID',  // Обязательно для SMS авторизации
-    debug: process.env.DEBUG === '1'
+    debug: process.env.DEBUG === '1',
+    /** Периодический sync продлевает/ротирует токен в sessions/*.json (долгий бот без зависаний) */
+    sessionRefreshIntervalMs: Number(process.env.SESSION_REFRESH_MS || 3_600_000) || 0
   });
+
+  activeClient = client;
+
+  if (useLastOk) {
+    const lastOk = path.join(process.cwd(), 'sessions', `${SESSION_NAME}.last_ok.json`);
+    if (fs.existsSync(lastOk)) {
+      const snap = JSON.parse(fs.readFileSync(lastOk, 'utf8'));
+      Object.assign(client.session.data, snap);
+      client.session.save();
+      console.log('Подмешан снимок сессии:', lastOk);
+    } else {
+      console.warn('USE_LAST_OK: файл не найден:', lastOk);
+    }
+  }
+
+  let phone = process.argv[2];
+  const savedToken = client.session.get('token');
+
+  if (!savedToken) {
+    if (!phone) {
+      phone = await ask('📱 Введите номер телефона (+79001234567): ');
+    }
+    if (!validatePhone(phone)) {
+      console.error('❌ Неверный формат номера телефона');
+      process.exit(1);
+    }
+  } else if (phone && !validatePhone(phone)) {
+    console.error('❌ Неверный формат номера телефона');
+    process.exit(1);
+  }
 
   // Обработчик запуска
   client.onStart(async () => {
@@ -81,14 +116,12 @@ async function main() {
     // Подключаемся
     await client.connect();
 
-    // Проверяем есть ли сохраненный токен
-    const savedToken = client.session.get('token');
-    
     if (savedToken) {
       console.log('✅ Найдена сохраненная сессия, вход по токену...\n');
       client._token = savedToken;
       await client.sync();
       client.isAuthorized = true;
+      client._scheduleSessionRefreshIfNeeded();
     } else {
       // SMS авторизация
       console.log('📱 Требуется SMS авторизация\n');
@@ -116,6 +149,7 @@ async function main() {
         }
         await afterCode.sendPassword(pwd);
       }
+      client._scheduleSessionRefreshIfNeeded();
     }
 
     // Запускаем обработчики start
@@ -130,8 +164,15 @@ async function main() {
   }
 }
 
-process.on('SIGINT', () => {
+process.on('SIGINT', async () => {
   console.log('\n\n👋 Завершение работы...');
+  try {
+    if (activeClient) {
+      await activeClient.stop();
+    }
+  } catch (_) {
+    /* ignore */
+  }
   console.log('\n💝 Нравится библиотека? Поддержите разработку:');
   console.log('   USDT (TRC20): TXfs1iVbp2aLd3rbc4cenVzMoTevP5RbBE');
   process.exit(0);
