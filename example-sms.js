@@ -1,25 +1,20 @@
 /**
- * Пример авторизации по SMS (ANDROID)
- * 
- * Использование:
- *   node example-sms.js
- *   node example-sms.js +79001234567  # с номером в аргументе
- *   USE_LAST_OK=1 — подмешать sessions/sms_session.last_ok.json (см. example-download-files.js)
- */
+ * SMS-авторизация (ANDROID). Сессия сохраняется в sessions/<имя>.json
+ * (токен, deviceId, ua-поля; при успешном 2FA — опционально twofaPassword).
+ *
+*/
 
-const fs = require('fs');
-const path = require('path');
 const readline = require('readline');
-const { WebMaxClient } = require('./index');
+const { WebMaxClient, EventTypes } = require('./index');
 
-const SESSION_NAME = process.env.SESSION_NAME || 'sms_session';
-const useLastOk =
-  process.env.USE_LAST_OK === '1' ||
-  process.env.USE_LAST_OK === 'true' ||
-  process.env.USE_LAST_OK === 'yes';
+const SESSION_NAME =
+  process.env.WEBMAX_SESSION || process.argv[3] || 'sms_session';
 
-/** Активный клиент для корректного закрытия TCP по Ctrl+C */
-let activeClient = null;
+const SESSION_REFRESH_MS_RAW = process.env.SESSION_REFRESH_MS;
+const sessionRefreshIntervalMs =
+  SESSION_REFRESH_MS_RAW === undefined || SESSION_REFRESH_MS_RAW === ''
+    ? 45 * 60 * 1000
+    : Number(SESSION_REFRESH_MS_RAW);
 
 function ask(question) {
   const rl = readline.createInterface({
@@ -34,53 +29,34 @@ function ask(question) {
   });
 }
 
-function validatePhone(phone) {
-  return /^\+?\d{10,15}$/.test(String(phone).replace(/\s/g, ''));
-}
-
 async function main() {
-  console.log('\n🚀 Запуск клиента с SMS авторизацией...\n');
+  let phone = process.argv[2];
 
-  // Создаем клиент с Android deviceType для SMS авторизации
-  const client = new WebMaxClient({
-    name: SESSION_NAME,
-    deviceType: 'ANDROID',  // Обязательно для SMS авторизации
-    debug: process.env.DEBUG === '1',
-    /** Периодический sync продлевает/ротирует токен в sessions/*.json (долгий бот без зависаний) */
-    sessionRefreshIntervalMs: Number(process.env.SESSION_REFRESH_MS || 3_600_000) || 0
-  });
-
-  activeClient = client;
-
-  if (useLastOk) {
-    const lastOk = path.join(process.cwd(), 'sessions', `${SESSION_NAME}.last_ok.json`);
-    if (fs.existsSync(lastOk)) {
-      const snap = JSON.parse(fs.readFileSync(lastOk, 'utf8'));
-      Object.assign(client.session.data, snap);
-      client.session.save();
-      console.log('Подмешан снимок сессии:', lastOk);
-    } else {
-      console.warn('USE_LAST_OK: файл не найден:', lastOk);
-    }
+  if (!phone) {
+    phone = await ask('📱 Введите номер телефона (+79001234567): ');
   }
 
-  let phone = process.argv[2];
-  const savedToken = client.session.get('token');
-
-  if (!savedToken) {
-    if (!phone) {
-      phone = await ask('📱 Введите номер телефона (+79001234567): ');
-    }
-    if (!validatePhone(phone)) {
-      console.error('❌ Неверный формат номера телефона');
-      process.exit(1);
-    }
-  } else if (phone && !validatePhone(phone)) {
+  const digitsOnly = phone.replace(/\s/g, '');
+  if (!/^\+?\d{10,15}$/.test(digitsOnly)) {
     console.error('❌ Неверный формат номера телефона');
     process.exit(1);
   }
 
-  // Обработчик запуска
+  console.log(`\n📁 Сессия: ${SESSION_NAME} → sessions/${SESSION_NAME}.json\n`);
+  console.log('🚀 Запуск клиента (SMS / сохранённый токен)...\n');
+
+  const client = new WebMaxClient({
+    name: SESSION_NAME,
+    deviceType: 'ANDROID',
+    saveToken: true,
+    saveTwofaPassword: process.env.SAVE_TWOFA_TO_SESSION !== '0',
+    debug: process.env.DEBUG === '1',
+    sessionRefreshIntervalMs:
+      Number.isFinite(sessionRefreshIntervalMs) && sessionRefreshIntervalMs > 0
+        ? sessionRefreshIntervalMs
+        : 0
+  });
+
   client.onStart(async () => {
     if (client.me) {
       console.log('\n📋 ДАННЫЕ ПОЛЬЗОВАТЕЛЯ:');
@@ -98,11 +74,10 @@ async function main() {
     }
   });
 
-  // Обработчик сообщений
   client.onMessage(async (message) => {
     if (message.senderId === client.me?.id) return;
     console.log(`\n💬 ${message.getSenderName()}: ${message.text}`);
-    
+
     await message.reply({
       text: 'Автоответ: сообщение получено!',
       cid: Date.now()
@@ -113,66 +88,67 @@ async function main() {
   client.onError((err) => console.error('❌', err.message));
 
   try {
-    // Подключаемся
     await client.connect();
 
+    const savedToken = client.session.get('token');
+
     if (savedToken) {
-      console.log('✅ Найдена сохраненная сессия, вход по токену...\n');
+      console.log('✅ Найдена сохранённая сессия, вход по токену из файла...\n');
       client._token = savedToken;
       await client.sync();
       client.isAuthorized = true;
-      client._scheduleSessionRefreshIfNeeded();
     } else {
-      // SMS авторизация
-      console.log('📱 Требуется SMS авторизация\n');
+      console.log('📱 Нет токена в сессии — SMS-авторизация\n');
       const authSession = await client.authorizeBySMS(phone);
-      
-      // Запрашиваем код
+
       const code = await ask('\n📲 Введите код из SMS (6 цифр): ');
-      
+
       if (!/^\d{6}$/.test(code)) {
         console.error('❌ Неверный формат кода');
         process.exit(1);
       }
 
-      // Отправляем код; при 2FA по паролю вернётся { needsPassword, sendPassword }
       const afterCode = await authSession.sendCode(code);
-      if (afterCode && typeof afterCode === 'object' && afterCode.needsPassword && typeof afterCode.sendPassword === 'function') {
+      if (
+        afterCode &&
+        typeof afterCode === 'object' &&
+        afterCode.needsPassword &&
+        typeof afterCode.sendPassword === 'function'
+      ) {
         let pwd = process.env.TWOFA_PASSWORD || process.env.TWOFa_PASSWORD;
         const saved = client.session.get('twofaPassword');
-        if (!pwd && saved && process.env.ASK_TWOFA !== '1' && process.env.ASK_TWOFa !== '1') {
+        if (
+          !pwd &&
+          saved &&
+          process.env.ASK_TWOFA !== '1' &&
+          process.env.ASK_TWOFa !== '1'
+        ) {
           pwd = saved;
-          console.log('\n🔒 Пароль 2FA из сессии (twofaPassword).');
+          console.log('\n🔒 Пароль 2FA взят из сессии (twofaPassword).');
         }
         if (!pwd) {
           pwd = await ask('\n🔒 Введите пароль 2FA: ');
         }
         await afterCode.sendPassword(pwd);
       }
+    }
+
+    if (typeof client._scheduleSessionRefreshIfNeeded === 'function') {
       client._scheduleSessionRefreshIfNeeded();
     }
 
-    // Запускаем обработчики start
-    await client.triggerHandlers(client.handlers.START);
-    
+    await client.triggerHandlers(EventTypes.START);
+
     console.log('\n✅ Клиент запущен успешно!');
     console.log('🤖 Бот работает (Ctrl+C — выход)\n');
-
   } catch (error) {
     console.error('❌ Ошибка:', error.message);
     process.exit(1);
   }
 }
 
-process.on('SIGINT', async () => {
+process.on('SIGINT', () => {
   console.log('\n\n👋 Завершение работы...');
-  try {
-    if (activeClient) {
-      await activeClient.stop();
-    }
-  } catch (_) {
-    /* ignore */
-  }
   console.log('\n💝 Нравится библиотека? Поддержите разработку:');
   console.log('   USDT (TRC20): TXfs1iVbp2aLd3rbc4cenVzMoTevP5RbBE');
   process.exit(0);
