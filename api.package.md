@@ -125,6 +125,8 @@
 | Метод | Описание |
 |-------|----------|
 | `getUser(userId)` | Один контакт → `User` |
+| `getUserByPhone(phone)` | Поиск по телефону (`CONTACT_INFO_BY_PHONE`) → `User` \| `null` |
+| `getUserIdByPhone(phone)` | Только id по телефону → `id` \| `null` |
 | `getContacts(contactIds)` | Несколько контактов (сырой ответ) |
 | `addContact(userId)` | В контакты |
 | `blockUser(userId)` | Блокировка |

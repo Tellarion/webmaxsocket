@@ -4,11 +4,16 @@
 
 **WebMaxSocket** — async Node.js библиотека для работы с внутренним API мессенджера Max. Поддерживает **QR-код авторизацию**, **Token авторизацию**, **SMS-вход** с опциональным **2FA-паролем** (как в приложении Max), и работу через **WebSocket** (WEB) или **TCP Socket** (ANDROID).
 
-**Текущая версия пакета: 1.2.6**
+**Текущая версия пакета: 1.2.7**
 
 Сводка всех методов: **[api.package.md](./api.package.md)**.
 
 ### Журнал изменений (выдержка)
+
+#### 1.2.7
+
+- **Fingerprint 26.19.2 (6733):** актуальные `APP_VERSION` / `BUILD_NUMBER` (фикс «Приложение устарело» на SMS).
+- **`getUserByPhone` / `getUserIdByPhone`:** поиск пользователя по номеру (`CONTACT_INFO_BY_PHONE`).
 
 #### 1.2.6
 
@@ -85,7 +90,7 @@ npm install lz4
 
 **Парные методы (как `onMessage`):** `onIncomingCall(handler)`, `onCallLog(handler)`.
 
-**Отклонение входящего:** APK Max использует OK API метод **`vchat.hangupConversation`** с параметрами `conversationId`, `reason`, `anonymToken?`. В библиотеке добавлены экспериментальные методы **`rejectIncomingCall(payload)`** и **`hangupCall(conversationIdOrPayload, { reason? })`**. Для входящего дозвона используйте `reason: 'REJECTED'` (по умолчанию в `rejectIncomingCall`).
+**Отклонение входящего:** экспериментальные методы **`rejectIncomingCall(payload)`** и **`hangupCall(conversationIdOrPayload, { reason? })`** вызывают OK API **`vchat.hangupConversation`** (`conversationId`, `reason`, `anonymToken?`). Для входящего дозвона используйте `reason: 'REJECTED'` (по умолчанию в `rejectIncomingCall`).
 
 **Утилиты:** `summarizeIncomingCall`, `extractCallAttachesFromNotifPayload`, `summarizeCallAttach`, `formatCallLogLine`, `isCallAttach`.
 
@@ -236,7 +241,7 @@ const data = await client.showLinkDeviceQR({ waitForScan: false });
 
 Опции: `waitForScan` (по умолчанию `true`), `small` — компактный QR в терминале.
 
-**Версия клиента:** для выдачи QR сервер ожидает актуальный **`appVersion`** в User-Agent (не ниже **25.12.13**). В конструкторе по умолчанию используется **26.14.1**.
+**Версия клиента:** для выдачи QR сервер ожидает актуальный **`appVersion`** в User-Agent (не ниже **25.12.13**). В конструкторе по умолчанию используется **26.19.2** (`buildNumber: 6733`).
 
 Если сервер отвечает **`qr_login.disabled`**, проверьте версию приложения в опциях, откройте [web.max.ru](https://web.max.ru) в браузере или войдите на втором устройстве по номеру телефона.
 
@@ -290,8 +295,8 @@ await client.start();
   "ua": "Mozilla/5.0 (Linux; Android 14) ...",
   "device_type": 3,
   "deviceType": "ANDROID",
-  "appVersion": "26.14.1",
-  "buildNumber": 6686
+  "appVersion": "26.19.2",
+  "buildNumber": 6733
 }
 ```
 
@@ -328,13 +333,13 @@ const client = new WebMaxClient({
   sessionRefreshIntervalMs: 0, // Периодический sync (мс), минимум 10_000; 0 — выключено. Алиас: autoSyncIntervalMs
   clearSessionOnFailedSync: false, // connectWithSession: при ошибке sync вызвать session.clear() перед authorize() (по умолчанию false)
   // User-Agent / клиент (важно для GET_QR, см. showLinkDeviceQR):
-  appVersion: '26.14.1',  // Актуальная версия Android-клиента из APK
+  appVersion: '26.19.2',  // Актуальная версия Android-клиента
   ua: 'Mozilla/5.0 ...', // или headerUserAgent
   osVersion: '14',
   screen: '360x780 3.0x',
   timezone: 'Europe/Moscow',
   locale: 'ru',
-  buildNumber: 6686,      // опционально
+  buildNumber: 6733,      // опционально
   clientSessionId: 1      // опционально
 });
 ```
@@ -552,6 +557,18 @@ await client.sendChatAction(123, ChatActions.TYPING);
 
 ```javascript
 const user = await client.getUser(123);
+```
+
+##### `getUserByPhone(phone)` / `getUserIdByPhone(phone)`
+
+Поиск пользователя по номеру (`CONTACT_INFO_BY_PHONE`, opcode 46). Номер нормализуется (`+79001234567`). Если пользователь не найден или скрыл поиск по телефону — `null`.
+
+```javascript
+const user = await client.getUserByPhone('+79001234567');
+// User { id, firstname, lastname, phone, ... } или null
+
+const id = await client.getUserIdByPhone('89001234567');
+// 123456789 или null
 ```
 
 ##### `getChats(limit, offset)`
@@ -970,7 +987,7 @@ DEBUG=1 node example.js
 
 2. **QR для нового устройства после входа по SMS/TCP:** Используйте `showLinkDeviceQR()`. Это не отдельный опкод в протоколе, а тот же `GET_QR`, что и у веб-клиента; для уже залогиненного TCP-сокета запрос выполняется через **эфемерное WebSocket-подключение** (временный файл сессии `_link_qr_*` удаляется после завершения).
 
-3. **Версия `appVersion` и QR:** Слишком старая версия в User-Agent может привести к ответу `qr_login.disabled` на `GET_QR`. Задайте в конструкторе актуальную строку (по умолчанию **26.14.1**).
+3. **Версия `appVersion` и QR/SMS:** Слишком старая версия в User-Agent даёт `qr_login.disabled` или «Приложение устарело». По умолчанию **26.19.2** / **6733**. Константы: `APP_VERSION`, `BUILD_NUMBER` в `lib/constants.js`.
 
 4. **Разница между sendMessage и sendMessageChannel:**
    - `sendMessage()` - отправка с уведомлением (notify: true) для обычных чатов
@@ -990,11 +1007,28 @@ DEBUG=1 node example.js
 
 ## 📌 История версий / Changelog
 
+### 1.2.7
+
+- **Fingerprint 26.19.2 (6733):** обновлены `APP_VERSION` / `BUILD_NUMBER` — сервер больше не отвечает «Приложение устарело» на SMS `AUTH_REQUEST`.
+- **Старые сессии:** `appVersion`/`buildNumber` больше не читаются из `sessions/*.json` (только options/config/дефолт), чтобы устаревший fingerprint не залипал.
+- **`getUserByPhone(phone)` / `getUserIdByPhone(phone)`:** поиск пользователя по номеру через opcode `CONTACT_INFO_BY_PHONE` (46). При `contact.not.found` возвращают `null`.
+
+### 1.2.6
+
+- **`client.lastSyncPayload`** — сохраняется последний успешный ответ **`LOGIN`/`sync()`** (в т.ч. массив `chats`). На **TCP** список **`getChats()`** иногда пустой, тогда чаты брать из **`lastSyncPayload.chats`**.
+- **Скачивание документов `FILE` без `baseUrl` в истории:** **`requestFileDownloadUrl({ chatId, messageId, fileId, fileName?, … })`** — сервер возвращает временный HTTPS-**`url`** для скачивания.
+- **`message.downloadAttachment()`** — для **`_type: FILE`** без URL сам вызывает **`requestFileDownloadUrl`** (нужны корректный **`chatId`** сообщения и **`messageId`**).
+- **`getHistory`**: в каждое сообщение подмешивается **`chatId`** из аргумента запроса (в сырых сообщениях его часто нет).
+- **`Message`**: корректно обрабатывается **`chatId === 0`** (например «Избранное к себе»).
+- **TCP + msgpack:** при наличии **`BigInt`** в исходящем payload включается **`useBigInt64`** при кодировании; входящие пакеты декодируются с **`useBigInt64`**, чтобы **`message.id`** и другие int64 не терялись (выше **`Number.MAX_SAFE_INTEGER`**).
+- **`downloadMedia`:** расширена карта MIME → расширение (`text/plain`, `application/pdf`, …).
+- Новый пример: **`example-download-files.js`** (история чата → папка `downloads/`).
+
 ### 1.2.5
 
 - **`Opcode.NOTIF_INCOMING_CALL` (137)** — имя опкода в `getOpcodeName`; обработка в TCP/WebSocket: событие **`incoming_call`**, **`onIncomingCall`**, плюс **`raw_message`** как раньше.
 - **`onCallLog`** / событие **`call_log`**: при **`NOTIF_MESSAGE`** с вложением **`_type: "CALL"`** (итог звонка: `hangupType`, `duration`, `conversationId`).
-- **`rejectIncomingCall`** / **`hangupCall`**: экспериментальная отправка сброса звонка через найденный в APK OK API метод **`vchat.hangupConversation`** (`conversationId`, `reason=REJECTED`).
+- **`rejectIncomingCall`** / **`hangupCall`**: экспериментальная отправка сброса звонка через OK API метод **`vchat.hangupConversation`** (`conversationId`, `reason=REJECTED`).
 - Модуль **`lib/callHelpers.js`** (экспорт из пакета): `summarizeIncomingCall`, `extractCallAttachesFromNotifPayload`, `summarizeCallAttach`, `formatCallLogLine`, `isCallAttach`.
 - **`EventTypes.INCOMING_CALL`**, **`EventTypes.CALL_LOG`**.
 
