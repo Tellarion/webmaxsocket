@@ -8,7 +8,8 @@
 const WebMaxClient = require('./lib/client');
 const { MaxSocketTransport } = require('./lib/socketTransport');
 const { User, Message, ChatAction } = require('./lib/entities');
-const { ChatActions, EventTypes, MessageTypes, APP_VERSION, BUILD_NUMBER } = require('./lib/constants');
+const { ChatActions, EventTypes, MessageTypes, APP_VERSION, BUILD_NUMBER, WEB_APP_VERSION, WS_API_URL } = require('./lib/constants');
+const { packWebFrame, unpackWebFrame } = require('./lib/webCodec');
 const { Opcode, getOpcodeName } = require('./lib/opcodes');
 const { UserAgentPayload } = require('./lib/userAgent');
 const { downloadUrlToTempFile, extFromContentType, extFromAttachType } = require('./lib/downloadMedia');
@@ -33,6 +34,10 @@ module.exports = {
   MessageTypes,
   APP_VERSION,
   BUILD_NUMBER,
+  WEB_APP_VERSION,
+  WS_API_URL,
+  packWebFrame,
+  unpackWebFrame,
   Opcode,
   getOpcodeName,
   UserAgentPayload,

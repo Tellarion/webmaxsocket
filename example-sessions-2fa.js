@@ -1,4 +1,4 @@
-/** Сессии устройств и 2FA. Нужен токен (example-sms.js / test-sms-2fa.js). WEBMAX_SESSION или имя sms_session. */
+/** Сессии устройств и 2FA. Нужен токен (example-sms.js). WEBMAX_SESSION или имя sms_session. */
 
 const readline = require('readline');
 const { WebMaxClient } = require('./index');

@@ -5,11 +5,12 @@
 
 const { WebMaxClient } = require('./index');
 
+let client;
+
 async function main() {
   // Инициализация клиента
-  const client = new WebMaxClient({
-    name: 'example_session', // Имя сессии
-    appVersion: '26.19.2'
+  client = new WebMaxClient({
+    name: 'example_session' // Имя сессии (appVersion по умолчанию — под транспорт)
   });
 
   // Обработчик запуска
@@ -30,7 +31,7 @@ async function main() {
     console.log(`🕐 ${new Date(message.timestamp).toLocaleString()}`);
     
     // Не отвечаем на свои сообщения
-    if (message.senderId === client.me.id) {
+    if (message.senderId === client.me?.id) {
       return;
     }
 
@@ -44,23 +45,20 @@ async function main() {
               '/info - Информация о боте\n' +
               '/ping - Проверка связи\n' +
               '/echo <текст> - Повторить текст',
-        cid: Date.now()
       });
       console.log('✅ Отправлено меню команд');
     }
     else if (text === '/info') {
       await message.reply({
         text: '📊 WebMax Node.js Client\n' +
-              'Версия: 1.0.0\n' +
+              `Версия: ${require('./package.json').version}\n` +
               'GitHub: https://github.com/Tellarion/webmaxsocket',
-        cid: Date.now()
       });
       console.log('✅ Отправлена информация');
     }
     else if (text === '/ping') {
       await message.reply({
         text: '🏓 Pong!',
-        cid: Date.now()
       });
       console.log('✅ Отправлен pong');
     }
@@ -68,7 +66,6 @@ async function main() {
       const echoText = message.text.substring(6);
       await message.reply({
         text: echoText,
-        cid: Date.now()
       });
       console.log('✅ Отправлено эхо');
     }
@@ -79,7 +76,6 @@ async function main() {
       
       await message.reply({
         text: `Привет, ${name}! 👋\nНапиши /help чтобы увидеть доступные команды.`,
-        cid: Date.now()
       });
       console.log(`✅ Отправлен приветственный ответ`);
     }
@@ -113,6 +109,7 @@ async function main() {
 // Обработка завершения
 process.on('SIGINT', async () => {
   console.log('\n\n👋 Завершение работы...');
+  if (client) await client.stop().catch(() => {});
   console.log('\n💝 Нравится библиотека? Поддержите разработку:');
   console.log('   USDT (TRC20): TXfs1iVbp2aLd3rbc4cenVzMoTevP5RbBE');
   process.exit(0);

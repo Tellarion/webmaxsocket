@@ -80,7 +80,6 @@ async function main() {
 
     await message.reply({
       text: 'Автоответ: сообщение получено!',
-      cid: Date.now()
     });
     console.log('✅ Отправлен автоответ');
   });

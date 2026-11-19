@@ -77,7 +77,7 @@ async function main() {
   client.onMessage(async (message) => {
     if (message.senderId === client.me?.id) return;
     console.log(`💬 ${message.getSenderName()}: ${message.text}`);
-    await message.reply({ text: 'Получено!', cid: Date.now() });
+    await message.reply({ text: 'Получено!' });
   });
 
   client.onError(async (err) => console.error('❌', err.message));

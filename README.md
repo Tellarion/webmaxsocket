@@ -4,11 +4,31 @@
 
 **WebMaxSocket** — async Node.js библиотека для работы с внутренним API мессенджера Max. Поддерживает **QR-код авторизацию**, **Token авторизацию**, **SMS-вход** с опциональным **2FA-паролем** (как в приложении Max), и работу через **WebSocket** (WEB) или **TCP Socket** (ANDROID).
 
-**Текущая версия пакета: 1.2.7**
+**Текущая версия пакета: 1.3.0**
 
 Сводка всех методов: **[api.package.md](./api.package.md)**.
 
 ### Журнал изменений (выдержка)
+
+#### 1.3.0
+
+- **Фикс поломки 19.11.2026.** web.max.ru перешёл на новый протокол, библиотека снова работает в обоих режимах:
+  - **WEB:** новый хост **`wss://api.oneme.ru/websocket`** (старый `ws-api.oneme.ru` больше не отвечает и вешал `connect()` навсегда; явно заданный старый URL переписывается автоматически) и **бинарные msgpack-кадры** вместо JSON (протокол v10, int16 seq, LZ4, int64 через ext type 1) — `lib/webCodec.js`. `SESSION_INIT` и `LOGIN` — в формате текущего web.max.ru, веб-версия **26.11.9**.
+  - **ANDROID/TCP:** fingerprint **26.41.0 / 6931** (26.19.2 сервер отклоняет с «Приложение устарело»).
+- **Версию можно поднять без обновления пакета:** `options.appVersion` / `options.buildNumber` или env **`WEBMAX_APP_VERSION`**, **`WEBMAX_BUILD_NUMBER`**, **`WEBMAX_WEB_APP_VERSION`**. Ошибка «устарело» теперь объясняет, что делать (`err.outdatedClient === true`).
+- **Переподключение:** обрыв TCP раньше вообще не замечался (ни события, ни реконнекта). Теперь для TCP и WebSocket: событие **`disconnected`**, `DISCONNECT`-хендлеры, реконнект с экспоненциальной паузой и **повторным LOGIN**, событие **`reconnected`**. `stop()` больше не запускает реконнект.
+- **PING / ack как у официальных клиентов:** ответ на PING — `cmd=1` с тем же seq (раньше — новый запрос), подтверждение каждого входящего сообщения, на WEB — `interactive`-пинг раз в 30 с.
+- **Ответы не «угоняются»:** входящие запросы сервера (`cmd=0`) больше не сопоставляются с ожидающими запросами по совпавшему seq.
+- **Таймауты подключения** (`connectTimeout`, по умолчанию 15 с) для TCP и WebSocket; понятная ошибка при HTTP-ответе вместо upgrade.
+- **`sendMessage()`** возвращает `Message` с `chatId` — `.edit()` / `.delete()` у отправленного сообщения работают.
+- **WEB + BigInt:** реакции и прочие запросы с int64 на WEB больше не падают (`JSON.stringify` не умел BigInt).
+- Зависимость **`uuid`** (deprecated) убрана — `crypto.randomUUID()`. Node **>= 14.17**.
+- **`test/live-test.js`** — живой прогон на своём аккаунте: `node test/live-test.js qr` или `node test/live-test.js sms +79...`.
+- **Таблица опкодов** снята с Android-клиента МАКС 26.41.0 — 190+ кодов (`Opcode.MSG_SEARCH`, `STORIES_*`, `CHAT_SEARCH`, `AUTH_CHECK_CALL`, …). Старые имена (`UPLOAD_ATTACH_PREP`, `NOTIF_INCOMING_CALL`, `LOGIN_BY_QR`) оставлены алиасами.
+- **`onMessageRemoved` не срабатывал:** удаление — это **`NOTIF_MSG_DELETE = 142`** (154 — отложенные сообщения), payload `{ chat, messageIds[] }`. Теперь событие на каждое удалённое сообщение с корректными `id` и `chatId`.
+- **SMS-вход как в приложении:** `AUTH_REQUEST` без лишнего `language`; `authorizeBySMS()` возвращает `codeLength`, `codeInfo` (`requestCountLeft`, `requestMaxDuration`, …) и **`resend()`** — повторная отправка кода (`type: RESEND`). Низкоуровнево: `transport.requestCodeInfo(phone, { resend })`.
+- **`npm test`** — офлайн-тесты кодеков WEB/TCP (без сети и аккаунта).
+- Примеры: добавлен `config/example.json` (раньше не попадал в git из-за `.gitignore`), убран `cid: Date.now()` (не влезает в int32), мелкие падения в `example.js`.
 
 #### 1.2.7
 
@@ -241,7 +261,7 @@ const data = await client.showLinkDeviceQR({ waitForScan: false });
 
 Опции: `waitForScan` (по умолчанию `true`), `small` — компактный QR в терминале.
 
-**Версия клиента:** для выдачи QR сервер ожидает актуальный **`appVersion`** в User-Agent (не ниже **25.12.13**). В конструкторе по умолчанию используется **26.19.2** (`buildNumber: 6733`).
+**Версия клиента:** для выдачи QR сервер ожидает актуальный **`appVersion`** в User-Agent (не ниже **25.12.13**). В конструкторе по умолчанию: ANDROID — **26.41.0** (`buildNumber: 6931`), WEB — **26.11.9**.
 
 Если сервер отвечает **`qr_login.disabled`**, проверьте версию приложения в опциях, откройте [web.max.ru](https://web.max.ru) в браузере или войдите на втором устройстве по номеру телефона.
 
@@ -288,21 +308,20 @@ const client = new WebMaxClient({
 await client.start();
 ```
 
-Формат конфига (`config/default.json`):
+Формат конфига (`config/default.json`, шаблон — `config/example.json`):
 ```json
 {
   "token": "An_Sx6HQ9HDiftNk...",
   "ua": "Mozilla/5.0 (Linux; Android 14) ...",
-  "device_type": 3,
-  "deviceType": "ANDROID",
-  "appVersion": "26.19.2",
-  "buildNumber": 6733
+  "deviceType": "ANDROID"
 }
 ```
 
+`appVersion` / `buildNumber` в конфиг лучше **не** писать: зашитая версия устареет при следующем обновлении Max, а дефолт библиотеки (или env `WEBMAX_APP_VERSION`) обновляется централизованно.
+
 #### Транспорты
 
-- **WEB** (`deviceType: 'WEB'` или `device_type: 1`) → WebSocket (ws-api.oneme.ru)
+- **WEB** (`deviceType: 'WEB'` или `device_type: 1`) → WebSocket (api.oneme.ru, бинарный msgpack)
 - **ANDROID** (`deviceType: 'ANDROID'` или `device_type: 2/3`) → TCP Socket (api.oneme.ru)
 
 Клиент **автоматически выбирает** правильный транспорт на основе сохраненного deviceType.
@@ -333,7 +352,7 @@ const client = new WebMaxClient({
   sessionRefreshIntervalMs: 0, // Периодический sync (мс), минимум 10_000; 0 — выключено. Алиас: autoSyncIntervalMs
   clearSessionOnFailedSync: false, // connectWithSession: при ошибке sync вызвать session.clear() перед authorize() (по умолчанию false)
   // User-Agent / клиент (важно для GET_QR, см. showLinkDeviceQR):
-  appVersion: '26.19.2',  // Актуальная версия Android-клиента
+  appVersion: '26.41.0',  // Актуальная версия Android-клиента
   ua: 'Mozilla/5.0 ...', // или headerUserAgent
   osVersion: '14',
   screen: '360x780 3.0x',
@@ -987,7 +1006,7 @@ DEBUG=1 node example.js
 
 2. **QR для нового устройства после входа по SMS/TCP:** Используйте `showLinkDeviceQR()`. Это не отдельный опкод в протоколе, а тот же `GET_QR`, что и у веб-клиента; для уже залогиненного TCP-сокета запрос выполняется через **эфемерное WebSocket-подключение** (временный файл сессии `_link_qr_*` удаляется после завершения).
 
-3. **Версия `appVersion` и QR/SMS:** Слишком старая версия в User-Agent даёт `qr_login.disabled` или «Приложение устарело». По умолчанию **26.19.2** / **6733**. Константы: `APP_VERSION`, `BUILD_NUMBER` в `lib/constants.js`.
+3. **Версия `appVersion` и QR/SMS:** Слишком старая версия в User-Agent даёт `qr_login.disabled` или «Приложение устарело». По умолчанию **26.41.0** / **6931** (WEB — **26.11.9**). Константы: `APP_VERSION`, `BUILD_NUMBER`, `WEB_APP_VERSION` в `lib/constants.js`; переопределение — env `WEBMAX_APP_VERSION` / `WEBMAX_BUILD_NUMBER` / `WEBMAX_WEB_APP_VERSION`.
 
 4. **Разница между sendMessage и sendMessageChannel:**
    - `sendMessage()` - отправка с уведомлением (notify: true) для обычных чатов
@@ -1006,6 +1025,26 @@ DEBUG=1 node example.js
 10. **`closeAllSessionsExceptCurrent`:** не подставляйте в **`closeSessions`** сырые флаги «закрыть все кроме текущего» без явного списка сессий — есть риск инвалидации своего токена; используйте готовый метод.
 
 ## 📌 История версий / Changelog
+
+### 1.3.0
+
+- **Фикс поломки 19.11.2026.** web.max.ru перешёл на новый протокол, библиотека снова работает в обоих режимах:
+  - **WEB:** новый хост **`wss://api.oneme.ru/websocket`** (старый `ws-api.oneme.ru` больше не отвечает и вешал `connect()` навсегда; явно заданный старый URL переписывается автоматически) и **бинарные msgpack-кадры** вместо JSON (протокол v10, int16 seq, LZ4, int64 через ext type 1) — `lib/webCodec.js`. `SESSION_INIT` и `LOGIN` — в формате текущего web.max.ru, веб-версия **26.11.9**.
+  - **ANDROID/TCP:** fingerprint **26.41.0 / 6931** (26.19.2 сервер отклоняет с «Приложение устарело»).
+- **Версию можно поднять без обновления пакета:** `options.appVersion` / `options.buildNumber` или env **`WEBMAX_APP_VERSION`**, **`WEBMAX_BUILD_NUMBER`**, **`WEBMAX_WEB_APP_VERSION`**. Ошибка «устарело» теперь объясняет, что делать (`err.outdatedClient === true`).
+- **Переподключение:** обрыв TCP раньше вообще не замечался (ни события, ни реконнекта). Теперь для TCP и WebSocket: событие **`disconnected`**, `DISCONNECT`-хендлеры, реконнект с экспоненциальной паузой и **повторным LOGIN**, событие **`reconnected`**. `stop()` больше не запускает реконнект.
+- **PING / ack как у официальных клиентов:** ответ на PING — `cmd=1` с тем же seq (раньше — новый запрос), подтверждение каждого входящего сообщения, на WEB — `interactive`-пинг раз в 30 с.
+- **Ответы не «угоняются»:** входящие запросы сервера (`cmd=0`) больше не сопоставляются с ожидающими запросами по совпавшему seq.
+- **Таймауты подключения** (`connectTimeout`, по умолчанию 15 с) для TCP и WebSocket; понятная ошибка при HTTP-ответе вместо upgrade.
+- **`sendMessage()`** возвращает `Message` с `chatId` — `.edit()` / `.delete()` у отправленного сообщения работают.
+- **WEB + BigInt:** реакции и прочие запросы с int64 на WEB больше не падают (`JSON.stringify` не умел BigInt).
+- Зависимость **`uuid`** (deprecated) убрана — `crypto.randomUUID()`. Node **>= 14.17**.
+- **`test/live-test.js`** — живой прогон на своём аккаунте: `node test/live-test.js qr` или `node test/live-test.js sms +79...`.
+- **Таблица опкодов** 190+ кодов (`Opcode.MSG_SEARCH`, `STORIES_*`, `CHAT_SEARCH`, `AUTH_CHECK_CALL`, …). Старые имена (`UPLOAD_ATTACH_PREP`, `NOTIF_INCOMING_CALL`, `LOGIN_BY_QR`) оставлены алиасами.
+- **`onMessageRemoved` не срабатывал:** удаление — это **`NOTIF_MSG_DELETE = 142`** (154 — отложенные сообщения), payload `{ chat, messageIds[] }`. Теперь событие на каждое удалённое сообщение с корректными `id` и `chatId`.
+- **SMS-вход как в приложении:** `AUTH_REQUEST` без лишнего `language`; `authorizeBySMS()` возвращает `codeLength`, `codeInfo` (`requestCountLeft`, `requestMaxDuration`, …) и **`resend()`** — повторная отправка кода (`type: RESEND`). Низкоуровнево: `transport.requestCodeInfo(phone, { resend })`.
+- **`npm test`** — офлайн-тесты кодеков WEB/TCP (без сети и аккаунта).
+- Примеры: добавлен `config/example.json` (раньше не попадал в git из-за `.gitignore`), убран `cid: Date.now()` (не влезает в int32), мелкие падения в `example.js`.
 
 ### 1.2.7
 
